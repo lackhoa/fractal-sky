@@ -18,6 +18,7 @@
     }
 
     onPropertyChange(property, value) {
+        // The property is usually "transform", "r" or "d"
         // Every shape is grouped, so we want to update the property of the first child in the group.
         // This behavior is overridden by specific views -- surface and objects, for example.
         // firstElementChild ignores text and comment nodes.

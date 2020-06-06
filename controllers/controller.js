@@ -1,4 +1,5 @@
-﻿class Controller {  // Receives user input, route it to model, then update the view
+﻿// Controllers are not separate, since they must know about the state (eg whether or not the mouse is down)
+class Controller {  // Receives user input, route it to model, then update the view
     constructor(state, view, model) {
         this.state = state;
         this.view = view;
@@ -14,18 +15,17 @@
     get shouldShowAnchors() {return true;}
     get hasConnectionPoints() {return true;}
 
-    registerEvent(element, eventName, callbackRef) {
-        this.events.push({ element: element, eventName: eventName,
-                           callbackRef: callbackRef });
-    }
 
     destroy() {this.unhookEvents();}
 
+    // This is the function that registers the events!
     registerEventListener(element, eventName, callback, self) {
         if (self == null || self === undefined) {self = this;}
         var ref = callback.bind(self);
         element.addEventListener(eventName, ref);
-        this.registerEvent(element, eventName, ref);
+        this.events.push({ element: element,
+                           eventName: eventName,
+                           callbackRef: ref });
     }
 
     unhookEvents() {
@@ -58,10 +58,12 @@
     onDrag(dx, dy) {this.model.translate(dx, dy)}
 
     wireUpEvents () {
-        this.registerEventListener(this.view.svgElement, "mousedown", this.state.onMouseDown, this.state);
-        this.registerEventListener(this.view.svgElement, "mouseup", this.state.onMouseUp, this.state);
-        this.registerEventListener(this.view.svgElement, "mousemove", this.state.onMouseMove, this.state);
-        this.registerEventListener(this.view.svgElement, "mouseenter", this.state.onMouseEnter, this.state);
-        this.registerEventListener(this.view.svgElement, "mouseleave", this.state.onMouseLeave, this.state);
+        let el = this.view.svgElement;
+        // Basically let the state handles everything, the end!
+        this.registerEventListener(el, "mousedown", this.state.onMouseDown, this.state);
+        this.registerEventListener(el, "mouseup", this.state.onMouseUp, this.state);
+        this.registerEventListener(el, "mousemove", this.state.onMouseMove, this.state);
+        this.registerEventListener(el, "mouseenter", this.state.onMouseEnter, this.state);
+        this.registerEventListener(el, "mouseleave", this.state.onMouseLeave, this.state);
     }
 }

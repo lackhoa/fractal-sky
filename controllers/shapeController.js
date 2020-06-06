@@ -1,9 +1,6 @@
 ﻿// The shape controller handles showing the anchors and other decorations.
+// Note that the state is used only for one thing: mouseDown
 class ShapeController extends Controller {
-    constructor(state, shapeView, shapeModel) {
-        super(state, shapeView, shapeModel);
-    }
-
     // Not all shapes have anchors.
     getAnchors() {return [];}
     getCorners() {return [this.getULCorner(), this.getLRCorner()];}

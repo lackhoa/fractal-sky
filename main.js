@@ -48,8 +48,8 @@ var diagramModel = null;
 var toolboxGroupController = null;
 
 document.getElementById(Constants.FILE_INPUT).addEventListener('change', readSingleFile, false);
-document.onkeydown = onKeyDown;
 
+// Handle keyDown events
 // https://stackoverflow.com/a/1648854/2276361
 // Read that regarding the difference between handling the event as a function
 // vs in the HTML attribute definition.  Sigh.
@@ -58,11 +58,11 @@ function onKeyDown(evt) {
 
     if (handled) {evt.preventDefault();}
 }
+document.onkeydown = onKeyDown;
 
 // https://w3c.github.io/FileAPI/
 // https://stackoverflow.com/questions/3582671/how-to-open-a-local-disk-file-with-javascript
-// Loading the file after it has been loaded doesn't trigger this event again because it's
-// hooked up to "change", and the filename hasn't changed!
+// Loading the file after it has been loaded doesn't trigger this event again because it's hooked up to "change", and the filename hasn't changed!
 function readSingleFile(e) {
     var file = e.target.files[0];
     var reader = new FileReader();
