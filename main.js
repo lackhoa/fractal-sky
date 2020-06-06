@@ -16,8 +16,6 @@
       TOOLBOX_CIRCLE_ID: "toolboxCircle",
       TOOLBOX_DIAMOND_ID: "toolboxDiamond",
       TOOLBOX_LINE_ID: "toolboxLine",
-      TOOLBOX_LINE_WITH_START_ID: "toolboxLineWithStart",
-      TOOLBOX_LINE_WITH_START_END_ID: "toolboxLineWithStartEnd",
       TOOLBOX_TEXT_ID: "toolboxText",
       DEFAULT_TEXT: "[text]",
       NEARBY_DELTA: 40,
@@ -184,6 +182,4 @@ function registerToolboxItem(mouseController, elementId, fncCreateController) {
                         (mc, view, model) => new ToolboxDiamondController(mc, view, model));
     registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_ID,
                         (mc, view, model) => new ToolboxLineController(mc, view, model));
-    registerToolboxItem(mouseController, Constants.TOOLBOX_TEXT_ID,
-                        (mc, view, model) => new ToolboxTextController(mc, view, model));
 })();

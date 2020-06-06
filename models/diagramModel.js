@@ -1,15 +1,15 @@
-﻿// This is a static object
+﻿// There's only one of each kind
+// Its job is to store the state of the diagram and serialize/deserialize it
 class DiagramModel {
     constructor(mouseController) {
         this.mouseController = mouseController;
         this.models = [];
-        // What is this shit?
+        // This helps in serialization
         this.mvc = {
             Rectangle: { model: RectangleModel, view: ShapeView, controller: RectangleController, creator : () => this.createElement("rect") },
             Circle: { model: CircleModel, view: ShapeView, controller: CircleController, creator: () => this.createElement("circle") },
             Diamond: { model: DiamondModel, view: ShapeView, controller: DiamondController, creator: () => this.createElement("path") },
             Line: { model: LineModel, view: LineView, controller: LineController, creator: () => this.createLineElement() },
-            Text: { model: TextModel, view: TextView, controller: TextController, creator: () => this.createTextElement() },
         };
     }
 
@@ -24,19 +24,9 @@ class DiagramModel {
     }
 
     createElement(elName) {
-        var group = Helpers.createElement("g", {});
         var el = Helpers.createElement(elName, { fill: "#FFFFFF", stroke: "black", "stroke-width": 1 });
+        let group = Helpers.createElement("g", {});
         group.appendChild(el);
-
-        return group;
-    }
-
-    createTextElement() {
-        var group = Helpers.createElement("g", {});
-        var el = Helpers.createElement('text', { "font-size": 12, "font-family": "Verdana" });
-        el.innerHTML = Constants.DEFAULT_TEXT;
-        group.appendChild(el);
-
         return group;
     }
 

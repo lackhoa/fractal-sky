@@ -23,14 +23,12 @@
     <script src="models/pathModel.js"></script>
     <script src="models/diamondModel.js"></script>
     <script src="models/lineModel.js"></script>
-    <script src="models/textModel.js"></script>
 
     <script src="views/view.js"></script>
     <script src="views/anchorView.js"></script>
     <script src="views/objectsView.js"></script>
     <script src="views/shapeView.js"></script>
     <script src="views/lineView.js"></script>
-    <script src="views/textView.js"></script>
     <script src="views/surfaceView.js"></script>
     <script src="views/toolboxView.js"></script>
     <!--<script src="views/toolboxSurfaceView.js"></script>-->
@@ -50,12 +48,10 @@
     <script src="controllers/circleController.js"></script>
     <script src="controllers/diamondController.js"></script>
     <script src="controllers/lineController.js"></script>
-    <script src="controllers/textController.js"></script>
     <script src="controllers/toolboxRectangleController.js"></script>
     <script src="controllers/toolboxCircleController.js"></script>
     <script src="controllers/toolboxDiamondController.js"></script>
     <script src="controllers/toolboxLineController.js"></script>
-    <script src="controllers/toolboxTextController.js"></script>
 
     <script defer src="main.js"></script>
   </head>
@@ -68,8 +64,6 @@
       <button onclick="saveSvg()">Save</button>
       <button onclick="document.getElementById('fileInput').click();">Load</button>
       <input type="file" id="fileInput" style="display:none;" />
-      &nbsp; Text:
-      <input id="text" type="text" onchange="setText()" />
     </div>
 
     <div>
@@ -119,8 +113,6 @@
             <rect id="lineHiddenSelectionArea" x="10" y="70" width="40" height="40" stroke-opacity="0" fill-opacity="0" />
             <line id="line" x1="10" y1="70" x2="50" y2="110" fill="#FFFFFF" stroke="black" stroke-width="1" />
           </g>
-
-          <text id="toolboxText" x="20" y="150" font-size="32" font-family="Verdana">A</text>
         </g>
       </svg>
     </div>
