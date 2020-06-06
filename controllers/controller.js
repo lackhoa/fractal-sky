@@ -45,7 +45,7 @@
         this.registerEventListener(this.view.svgElement, "mouseleave", this.mouseController.onMouseLeave, this.mouseController);
     }
 
-    getAbsoluteLocation(p) {
+    getAbsoluteLocation(p) {// I like how this changes its parameter
         p = p.translate(this.model.tx, this.model.ty);
         p = p.translate(surfaceModel.tx, surfaceModel.ty);
         return p;
@@ -58,34 +58,9 @@
     }
 
     // Routed from mouse controller:
-
     onMouseEnter() { }
-
     onMouseLeave() { }
-
     onMouseDown() { }
-
     onMouseUp() { }
-
-    onDrag(dx, dy) {
-        this.model.translate(dx, dy);
-        // Adjust all connectors connecting to this shape.
-        let connections = diagramModel.connections.filter(c => c.shapeId == this.view.id);
-        connections.map(c => {
-            // TODO: Sort of nasty assumption here that the first controller is the line controller
-            let lineController = this.mouseController.getControllersById(c.lineId)[0];
-            lineController.translateEndpoint(c.lineAnchorIdx, dx, dy);
-        });
-    }
-
-    // Adjust the connectors connecting to this shape's connection point.
-    adjustConnectorsAttachedToConnectionPoint(dx, dy, cpIdx) {
-        let connections = diagramModel.connections.filter(c => ((c.shapeId == this.view.id) &&
-                                                                (c.shapeCPIdx == cpIdx)));
-        connections.map(c => {
-            // Nasty assumption: the first controller is the line controller
-            let lineController = this.mouseController.getControllersById(c.lineId)[0];
-            lineController.translateEndpoint(c.lineAnchorIdx, dx, dy);
-        });
-    }
+    onDrag(dx, dy) {this.model.translate(dx, dy)}
 }

@@ -21,7 +21,6 @@
       TOOLBOX_TEXT_ID: "toolboxText",
       DEFAULT_TEXT: "[text]",
       NEARBY_DELTA: 40,
-      MAX_CP_NEAR: 6,    // anchor must be +/- this value to a connection point to connect.
       KEY_RIGHT: 39,
       KEY_UP: 38,
       KEY_LEFT: 37,
@@ -29,14 +28,14 @@
       KEY_DELETE: 46,
   };
 
-  const START_OF_DIAGRAM_TAG = "<diagram>";
-  const END_OF_DIAGRAM_TAG = "</diagram>";
+const START_OF_DIAGRAM_TAG = "<diagram>";
+const END_OF_DIAGRAM_TAG = "</diagram>";
 
-  // Must be lowercase "shapename" - "shapeName", as set in the toolbox controller, the DOM adds elements as lowercase!
-  // https://stackoverflow.com/a/6386486/2276361
-  const SHAPE_NAME_ATTR = "shapename";
+// Must be lowercase "shapename" - "shapeName", as set in the toolbox controller, the DOM adds elements as lowercase!
+// https://stackoverflow.com/a/6386486/2276361
+const SHAPE_NAME_ATTR = "shapename";
 
-  // Global so UI can set the text of a text shape.
+// Global so UI can set the text of a text shape.
 var mouseController = null;
 
 // Global so we can access the surface translation.
@@ -185,10 +184,6 @@ function registerToolboxItem(mouseController, elementId, fncCreateController) {
                         (mc, view, model) => new ToolboxDiamondController(mc, view, model));
     registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_ID,
                         (mc, view, model) => new ToolboxLineController(mc, view, model));
-    registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_WITH_START_ID,
-                        (mc, view, model) => new ToolboxLineWithStartController(mc, view, model));
-    registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_WITH_START_END_ID,
-                        (mc, view, model) => new ToolboxLineWithStartEndController(mc, view, model));
     registerToolboxItem(mouseController, Constants.TOOLBOX_TEXT_ID,
                         (mc, view, model) => new ToolboxTextController(mc, view, model));
 })();
