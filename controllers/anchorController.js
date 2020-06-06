@@ -1,7 +1,7 @@
 ﻿// Anchors know about their shape controller, so when they're dragged, the shape controller will handle the resizing
 class AnchorController extends Controller {
-    constructor(mouseController, view, model, shapeController, fncDragAnchor, anchorIdx) {
-        super(mouseController, view, model);
+    constructor(state, view, model, shapeController, fncDragAnchor, anchorIdx) {
+        super(state, view, model);
         this.fncDragAnchor = fncDragAnchor;
         this.anchorIdx = anchorIdx;
     }

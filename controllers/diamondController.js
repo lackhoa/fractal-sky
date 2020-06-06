@@ -1,6 +1,6 @@
 ﻿class DiamondController extends ShapeController {
-    constructor(mouseController, view, model) {
-        super(mouseController, view, model);
+    constructor(state, view, model) {
+        super(state, view, model);
     }
 
     getAnchors() {

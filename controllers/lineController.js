@@ -1,8 +1,4 @@
 ﻿class LineController extends ShapeController {
-    constructor(mouseController, view, model) {
-        super(mouseController, view, model);
-    }
-
     onDrag(dx, dy) {super.onDrag(dx, dy);}
 
     translateEndpoint(idx, dx, dy) {

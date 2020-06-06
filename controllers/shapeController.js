@@ -1,7 +1,7 @@
 ﻿// The shape controller handles showing the anchors and other decorations.
 class ShapeController extends Controller {
-    constructor(mouseController, shapeView, shapeModel) {
-        super(mouseController, shapeView, shapeModel);
+    constructor(state, shapeView, shapeModel) {
+        super(state, shapeView, shapeModel);
     }
 
     // Not all shapes have anchors.
@@ -11,7 +11,7 @@ class ShapeController extends Controller {
     onDrag(dx, dy) {super.onDrag(dx, dy);}
 
     onMouseEnter() {
-        if (!this.mouseController.mouseDown && this.shouldShowAnchors) {
+        if (!this.state.mouseDown && this.shouldShowAnchors) {
             // If the user is dragging another shape, then don't show anchor
             anchorGroupController.showAnchors(this);
         }

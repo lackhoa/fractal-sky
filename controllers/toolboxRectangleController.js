@@ -1,6 +1,6 @@
 ﻿class ToolboxRectangleController extends ToolboxShapeController {
-    constructor(mouseController, view, model) {
-        super(mouseController, view, model);
+    constructor(state, view, model) {
+        super(state, view, model);
     }
 
     createElementAt(x, y) {
@@ -13,7 +13,7 @@
         model._width = 60;
         model._height = 60;
         var view = new ShapeView(group, model);
-        var controller = new RectangleController(this.mouseController, view, model);
+        var controller = new RectangleController(this.state, view, model);
 
         return { el: group, model: model, view: view, controller: controller };
     }

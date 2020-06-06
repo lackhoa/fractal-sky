@@ -1,8 +1,8 @@
 ﻿// There's only one of each kind
 // Its job is to store the state of the diagram and serialize/deserialize it
 class DiagramModel {
-    constructor(mouseController) {
-        this.mouseController = mouseController;
+    constructor(state) {
+        this.state = state;
         this.models = [];
         // This helps in serialization
         this.mvc = {
@@ -81,17 +81,17 @@ class DiagramModel {
                 var view = new this.mvc[key].view(el, model);
                 model.deserialize(val, el);
                 view.id = val.id;
-                var controller = new this.mvc[key].controller(mouseController, view, model);
+                var controller = new this.mvc[key].controller(state, view, model);
 
                 // Update our diagram's model collection.
                 this.models.push({ model: model, id: val.id });
 
                 Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(el);
-                this.mouseController.attach(view, controller);
+                this.state.attach(view, controller);
 
                 // shapes also need an anchor controller
                 if (controller.shouldShowAnchors) {
-                    this.mouseController.attach(view, anchorGroupController);
+                    this.state.attach(view, anchorGroupController);
                 }
             }
         });

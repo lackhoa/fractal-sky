@@ -3,13 +3,13 @@ const TOOLBOX_DRAG_MIN_MOVE = 3;
 
 // This is not a controller in the MVC sense
 // It's the "omniponent" object that is shared everywhere
-class MouseController {
+class State {
     constructor() {
         this.mouseDown = false;
         this.controllers = {};
         // Active controllers is not null when we're selecting a shape (mouse down on it)
         // When we're dragging a shape, the active controllers are the shape and the anchor group controller. But if we just hover on it, it's null.
-        this.activeControllers = null;
+        this.activeControllers = [];
         this.currentHoverControllers = [];
         this.leavingId = -1;
         this.draggingToolboxShape = false;
@@ -22,7 +22,7 @@ class MouseController {
         this.dx = 0; this.dy = 0;
     }
 
-    // Attach as many controllers as you want to the view.
+    // Each view is attached to many controllers
     attach(view, controller) {
         let id = view.id;
         if (this.controllers[id] == undefined) {
@@ -34,14 +34,8 @@ class MouseController {
     // Compare functions detach with destroyAll.
 
     // Detach all controllers associated with this view.
-    detach(view) {
-        delete this.controllers[view.id];
-    }
-
-    detachAll() {
-        this.controllers = {};
-    }
-
+    detach(view) {delete this.controllers[view.id];}
+    detachAll() {this.controllers = {};}
     destroy(view) {
         var id = view.id;
         this.controllers[id].map(controller=>controller.destroy());
@@ -106,7 +100,7 @@ class MouseController {
                 this.currentHoverControllers.map(c => c.onMouseLeave());
                 // Remove shape from diagram model, and all connections of this shape.
                 diagramModel.removeShape(this.hoverShapeId);
-                // Remove shape from mouse controller and detach events.
+                // Remove shape from state and detach events.
                 this.destroyShapeById(this.hoverShapeId);
                 // Remove from "objects" collection.
                 var el = Helpers.getElement(this.hoverShapeId);
@@ -128,7 +122,9 @@ class MouseController {
             evt.preventDefault();
             var id = evt.currentTarget.getAttribute("id");
             this.selectedShapeId = id;
-            this.activeControllers = this.controllers[id];
+            if (this.controllers[id] != null) {
+                this.activeControllers = this.controllers[id];
+            } else { this.activeControllers = []; }
             this.selectedControllers = this.controllers[id];
             this.mouseDown = true;
             this.startDownX = evt.clientX;
@@ -144,7 +140,7 @@ class MouseController {
     // If the user is dragging, call the controller's onDrag function.
     onMouseMove(evt) {
         evt.preventDefault();
-        if (this.mouseDown && this.activeControllers != null) {
+        if (this.mouseDown && this.activeControllers != []) {
             this.dx = evt.clientX - this.x;
             this.dy = evt.clientY - this.y;
             this.x = evt.clientX;
@@ -157,7 +153,7 @@ class MouseController {
 
     onMouseUp(evt) {
         evt.preventDefault();
-        if (evt.button == LEFT_MOUSE_BUTTON && this.activeControllers != null) {
+        if (evt.button == LEFT_MOUSE_BUTTON && this.activeControllers != []) {
             this.selectedShapeId = null;
             this.x = evt.clientX;
             this.y = evt.clientY;
@@ -183,13 +179,12 @@ class MouseController {
         } else {  // Hover management.
             if (this.leavingId != -1) {
                 console.log("Leaving " + this.leavingId);
-
                 if (!this.controllers[id][0].isAnchorController) {
                     for (let c of this.currentHoverControllers) {
                         c.onMouseLeave();
                     }
                     let ctrlNames = this.controllers[id].map(ctrl=>ctrl.constructor.name).join(", ")
-                    console.log(`Entering ${id} => ${ctrlNames}`);
+                    console.log(`Entering view ${id} => controllers ${ctrlNames}`);
                     // Tell the new shape that we're entering.
                     this.currentHoverControllers = this.controllers[id];
                     for (let c of this.currentHoverControllers) {
@@ -224,7 +219,7 @@ class MouseController {
 
     clearSelectedObject() {
         this.mouseDown = false;
-        this.activeControllers = null;
+        this.activeControllers = [];
     }
 
     // Move the shape out of the toolbox group and into the objects group.

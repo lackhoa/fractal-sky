@@ -1,8 +1,4 @@
 ﻿class RectangleController extends ShapeController {
-    constructor(mouseController, view, model) {
-        super(mouseController, view, model);
-    }
-
     getAnchors() {
         var corners = this.getCorners();
         var middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);

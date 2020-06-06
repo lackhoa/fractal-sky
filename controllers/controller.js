@@ -1,10 +1,10 @@
 ﻿class Controller {  // Receives user input, route it to model, then update the view
-    // Of course we cannot forget the almighty "mouseController"
-    constructor(mouseController, view, model) {
-        this.mouseController = mouseController;
+    constructor(state, view, model) {
+        this.state = state;
         this.view = view;
         this.model = model;
         this.events = [];
+        // Wire up events
         this.wireUpEvents();
     }
 
@@ -37,13 +37,6 @@
         this.events = [];
     }
 
-    wireUpEvents() {
-        this.registerEventListener(this.view.svgElement, "mousedown", this.mouseController.onMouseDown, this.mouseController);
-        this.registerEventListener(this.view.svgElement, "mouseup", this.mouseController.onMouseUp, this.mouseController);
-        this.registerEventListener(this.view.svgElement, "mousemove", this.mouseController.onMouseMove, this.mouseController);
-        this.registerEventListener(this.view.svgElement, "mouseenter", this.mouseController.onMouseEnter, this.mouseController);
-        this.registerEventListener(this.view.svgElement, "mouseleave", this.mouseController.onMouseLeave, this.mouseController);
-    }
 
     getAbsoluteLocation(p) {// I like how this changes its parameter
         p = p.translate(this.model.tx, this.model.ty);
@@ -63,4 +56,12 @@
     onMouseDown() { }
     onMouseUp() { }
     onDrag(dx, dy) {this.model.translate(dx, dy)}
+
+    wireUpEvents () {
+        this.registerEventListener(this.view.svgElement, "mousedown", this.state.onMouseDown, this.state);
+        this.registerEventListener(this.view.svgElement, "mouseup", this.state.onMouseUp, this.state);
+        this.registerEventListener(this.view.svgElement, "mousemove", this.state.onMouseMove, this.state);
+        this.registerEventListener(this.view.svgElement, "mouseenter", this.state.onMouseEnter, this.state);
+        this.registerEventListener(this.view.svgElement, "mouseleave", this.state.onMouseLeave, this.state);
+    }
 }

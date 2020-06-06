@@ -1,8 +1,4 @@
 ﻿class CircleController extends ShapeController {
-    constructor(mouseController, view, model) {
-        super(mouseController, view, model);
-    }
-
     getAnchors() {
         let corners = this.getCorners();
         let middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);

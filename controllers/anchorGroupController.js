@@ -3,8 +3,8 @@ let anchorGroup = Helpers.getElement("anchors");
 // Possibly another "omnipotent" class?
 // It can show/destroy anchors
 class AnchorGroupController extends Controller {
-    constructor(mouseController, view, model) {
-        super(mouseController, view, model);
+    constructor(state, view, model) {
+        super(state, view, model);
         this.anchors = [];
         this.showingAnchors = false;
     }
@@ -67,8 +67,8 @@ class AnchorGroupController extends Controller {
 
             var anchorView = new View(el, anchorModels[i]);
             var fncDragAnchor = this.partialOnDrag(anchorModels, anchorModels[i], anchorDefinition.onDrag);
-            var anchorController = new AnchorController(this.mouseController, anchorView, anchorModels[i], shapeController, fncDragAnchor, i);
-            this.mouseController.attach(anchorView, anchorController);
+            var anchorController = new AnchorController(this.state, anchorView, anchorModels[i], shapeController, fncDragAnchor, i);
+            this.state.attach(anchorView, anchorController);
             this.anchors.views.push(anchorView);     // Save the view for when we need to destroy the individual anchors.
         }
     }
@@ -87,7 +87,7 @@ class AnchorGroupController extends Controller {
         // https://stackoverflow.com/questions/3955229/remove-all-child-elements-of-a-dom-node-in-javascript
         anchorGroup.innerHTML = "";
         for (let view of this.anchors.views) {
-            this.mouseController.destroy(view);
+            this.state.destroy(view);
         }
         this.anchors = [];
         this.showingAnchors = false;

@@ -1,15 +1,11 @@
 class SurfaceController extends Controller {
-    constructor(mouseController, surfaceView, surfaceModel) {
-        super(mouseController, surfaceView, surfaceModel);
+    constructor(state, surfaceView, surfaceModel) {
+        super(state, surfaceView, surfaceModel);
     }
 
-    get isSurfaceController() {
-        return true;
-    }
+    get isSurfaceController() {return true;}
 
-    get hasConnectionPoints() {
-        return false;
-    }
+    get hasConnectionPoints() {return false;}
 
     // overrides Controller.onDrag
     onDrag(dx, dy) {
@@ -19,7 +15,5 @@ class SurfaceController extends Controller {
         this.model.setTranslate(dx, dy);
     }
 
-    onMouseLeave() {
-        this.mouseController.clearSelectedObject();
-    }
+    onMouseLeave() {this.state.clearSelectedObject();}
 }

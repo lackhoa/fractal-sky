@@ -30,7 +30,7 @@ const END_OF_DIAGRAM_TAG = "</diagram>";
 const SHAPE_NAME_ATTR = "shapename";
 
 // Global so UI can set the text of a text shape.
-var mouseController = null;
+var state = null;
 
 // Global so we can access the surface translation.
 var surfaceModel = null;
@@ -54,11 +54,9 @@ document.onkeydown = onKeyDown;
 // Read that regarding the difference between handling the event as a function
 // vs in the HTML attribute definition.  Sigh.
 function onKeyDown(evt) {
-    var handled = mouseController.onKeyDown(evt);
+    var handled = state.onKeyDown(evt);
 
-    if (handled) {
-        evt.preventDefault();
-    }
+    if (handled) {evt.preventDefault();}
 }
 
 // https://w3c.github.io/FileAPI/
@@ -82,7 +80,7 @@ function loadComplete(e) {
 }
 
 function clearSvg() {
-    mouseController.destroyAllButSurface();
+    state.destroyAllButSurface();
     surfaceModel.setTranslation(0, 0);
     objectsModel.setTranslation(0, 0);
     diagramModel.clear();
@@ -101,25 +99,17 @@ function saveSvg() {
     saveAs(blob, Constants.FILENAME);
 }
 
-// Update the selected shape's text.  Works only with text shapes right now.
-function setText() {
-    if (mouseController.selectedControllers != null) {
-        var text = document.getElementById("text").value;
-        mouseController.selectedControllers.map(c => c.model.text = text);
-    }
-}
-
-function registerToolboxItem(mouseController, elementId, fncCreateController) {
+function registerToolboxItem(state, elementId, fncCreateController) {
     var svgElement = Helpers.getElement(elementId);
     var model = new Model();
     var view = new View(svgElement, model);
-    var controller = fncCreateController(mouseController, view, model);
-    mouseController.attach(view, controller);
+    var controller = fncCreateController(state, view, model);
+    state.attach(view, controller);
 }
 
 (function initialize() {
-    mouseController = new MouseController();
-    diagramModel = new DiagramModel(mouseController);
+    state = new State();
+    diagramModel = new DiagramModel(state);
     let svgSurface = Helpers.getElement(Constants.SVG_SURFACE_ID);
     let svgObjects = Helpers.getElement(Constants.SVG_OBJECTS_ID);
     let svgAnchors = Helpers.getElement(Constants.SVG_ANCHORS_ID);
@@ -136,22 +126,21 @@ function registerToolboxItem(mouseController, elementId, fncCreateController) {
     let anchorsView = new AnchorView(svgAnchors, anchorsModel);
     let toolboxSurfaceView = new View(toolboxSurface, toolboxSurfaceModel);
 
-    let surfaceController = new SurfaceController(mouseController, surfaceView, surfaceModel);
-    let objectsController = new ObjectsController(mouseController, objectsView, objectsModel);
-    anchorGroupController = new AnchorGroupController(mouseController, anchorsView, anchorsModel);
+    let surfaceController = new SurfaceController(state, surfaceView, surfaceModel);
+    let objectsController = new ObjectsController(state, objectsView, objectsModel);
+    anchorGroupController = new AnchorGroupController(state, anchorsView, anchorsModel);
 
     // We need a controller to handle mouse events when the user moves the mouse fast enough on the toolbox to leave the shape being dragged and dropped, but it also needs to override onDrag because the toolbox can't be moved around.  TODO: At least, not at the moment.
-    let toolboxSurfaceController = new ToolboxSurfaceController(mouseController, toolboxSurfaceView, toolboxSurfaceModel);
+    let toolboxSurfaceController = new ToolboxSurfaceController(state, toolboxSurfaceView, toolboxSurfaceModel);
 
     // Attach both the surface and objects controller to the surface view so that events from the surface view are routed to both controllers, one for dealing with the grid, one for moving the objects on the surface and the surface is translated.
-    mouseController.attach(surfaceView, surfaceController);
-    mouseController.attach(surfaceView, objectsController);
-    mouseController.attach(toolboxSurfaceView, toolboxSurfaceController);
+    state.attach(surfaceView, surfaceController);
+    state.attach(surfaceView, objectsController);
+    state.attach(toolboxSurfaceView, toolboxSurfaceController);
 
     let toolboxModel = new Model();
     let toolboxView = new ToolboxView(toolbox, toolboxModel);
-    toolboxGroupController = new ToolboxGroupController(mouseController, toolboxView, toolboxModel);
-    // mouseController.attach(toolboxView, toolboxController);
+    toolboxGroupController = new ToolboxGroupController(state, toolboxView, toolboxModel);
 
     // Example of creating a shape programmatically:
     /*
@@ -162,20 +151,20 @@ function registerToolboxItem(mouseController, elementId, fncCreateController) {
       rectModel._width = 60;
       rectModel._height = 60;
       var rectView = new ShapeView(rectEl, rectModel);
-      var rectController = new RectangleController(mouseController, rectView, rectModel);
+      var rectController = new RectangleController(state, rectView, rectModel);
       Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(rectEl);
-      mouseController.attach(rectView, rectController);
+      state.attach(rectView, rectController);
       // Most shapes also need an anchor controller
-      mouseController.attach(rectView, anchorGroupController);
+      state.attach(rectView, anchorGroupController);
     */
 
-    // Create Toolbox Model-View-Controllers and register with mouse controller.
-    registerToolboxItem(mouseController, Constants.TOOLBOX_RECTANGLE_ID,
+    // Create Toolbox Model-View-Controllers and register with state.
+    registerToolboxItem(state, Constants.TOOLBOX_RECTANGLE_ID,
                         (mc, view, model) => new ToolboxRectangleController(mc, view, model));
-    registerToolboxItem(mouseController, Constants.TOOLBOX_CIRCLE_ID,
+    registerToolboxItem(state, Constants.TOOLBOX_CIRCLE_ID,
                         (mc, view, model) => new ToolboxCircleController(mc, view, model));
-    registerToolboxItem(mouseController, Constants.TOOLBOX_DIAMOND_ID,
+    registerToolboxItem(state, Constants.TOOLBOX_DIAMOND_ID,
                         (mc, view, model) => new ToolboxDiamondController(mc, view, model));
-    registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_ID,
+    registerToolboxItem(state, Constants.TOOLBOX_LINE_ID,
                         (mc, view, model) => new ToolboxLineController(mc, view, model));
 })();
