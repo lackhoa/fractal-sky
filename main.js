@@ -1,13 +1,11 @@
 // TODO: Prepend "Constants."
   const Constants = {
       SVG_NS: "http://www.w3.org/2000/svg",
-      SVG_ELEMENT_ID: "svg",
       SVG_SURFACE_ID: "surface",
       SVG_TOOLBOX_SURFACE_ID: "toolboxSurface",
       SVG_OBJECTS_ID: "objects",
       SVG_TOOLBOX_ID: "toolbox",
       SVG_ANCHORS_ID: "anchors",
-      SVG_CONNECTION_POINTS_ID: "connectionPoints",
       SHAPE_CLASS_NAME: "svgShape",
       FILE_INPUT: "fileInput",
       OBJECT_GROUP_ID: "objectGroup",
@@ -16,8 +14,6 @@
       TOOLBOX_CIRCLE_ID: "toolboxCircle",
       TOOLBOX_DIAMOND_ID: "toolboxDiamond",
       TOOLBOX_LINE_ID: "toolboxLine",
-      TOOLBOX_TEXT_ID: "toolboxText",
-      DEFAULT_TEXT: "[text]",
       NEARBY_DELTA: 40,
       KEY_RIGHT: 39,
       KEY_UP: 38,

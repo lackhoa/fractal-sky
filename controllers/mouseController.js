@@ -1,12 +1,14 @@
 const LEFT_MOUSE_BUTTON = 0;
 const TOOLBOX_DRAG_MIN_MOVE = 3;
 
+// This is not a controller in the MVC sense
+// It's the "omniponent" object that is shared everywhere
 class MouseController {
-    // it's not a controller in the MVC sense
-    // This is the "omniponent" object that is shared everywhere
     constructor() {
         this.mouseDown = false;
         this.controllers = {};
+        // Active controllers is not null when we're selecting a shape (mouse down on it)
+        // When we're dragging a shape, the active controllers are the shape and the anchor group controller. But if we just hover on it, it's null.
         this.activeControllers = null;
         this.currentHoverControllers = [];
         this.leavingId = -1;
@@ -133,7 +135,9 @@ class MouseController {
             this.startDownY = evt.clientY;
             this.x = evt.clientX;
             this.y = evt.clientY;
-            this.activeControllers.map(c => c.onMouseDown());
+            for (let c of this.activeControllers) {
+                c.onMouseDown();
+            }
         }
     }
 
@@ -145,7 +149,9 @@ class MouseController {
             this.dy = evt.clientY - this.y;
             this.x = evt.clientX;
             this.y = evt.clientY;
-            this.activeControllers.map(c => c.onDrag(this.dx, this.dy));
+            for (let c of this.activeControllers) {
+                c.onDrag(this.dx, this.dy);
+            }
         }
     }
 
@@ -178,15 +184,19 @@ class MouseController {
             if (this.leavingId != -1) {
                 console.log("Leaving " + this.leavingId);
 
-                // If we're entering an anchor, don't leave anything as we want to preserve the anchors.
                 if (!this.controllers[id][0].isAnchorController) {
-                    this.currentHoverControllers.map(c => c.onMouseLeave());
+                    for (let c of this.currentHoverControllers) {
+                        c.onMouseLeave();
+                    }
                     let ctrlNames = this.controllers[id].map(ctrl=>ctrl.constructor.name).join(", ")
                     console.log(`Entering ${id} => ${ctrlNames}`);
                     // Tell the new shape that we're entering.
                     this.currentHoverControllers = this.controllers[id];
-                    this.currentHoverControllers.map(c => c.onMouseEnter());
+                    for (let c of this.currentHoverControllers) {
+                        c.onMouseEnter();
+                    }
                 } else {
+                    // If we're entering an anchor, don't leave anything as we want to preserve the anchors.
                     console.log("Leaving shape to enter anchor.");
                 }
             }
@@ -205,9 +215,7 @@ class MouseController {
         return this.controllers[id];
     }
 
-    getControllersById(id) {
-        return this.controllers[id];
-    }
+    getControllersById(id) {return this.controllers[id];}
 
     getControllersByElement(el) {
         let id = el.getAttribute("id");
@@ -226,8 +234,10 @@ class MouseController {
         // Remove from toolbox group, translate, add to objects group.
         Helpers.getElement(Constants.SVG_TOOLBOX_ID).removeChild(elDropped);
         let id = elDropped.getAttribute("id");
-        this.controllers[id].map(c => c.model.translate(-surfaceModel.tx + toolboxGroupController.model.tx,
-                                                        -surfaceModel.ty + toolboxGroupController.model.ty));
+        for (let c of this.controllers[id]) {
+            c.model.translate(-surfaceModel.tx + toolboxGroupController.model.tx,
+                              -surfaceModel.ty + toolboxGroupController.model.ty);
+        }
         Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(elDropped);
 
         // Only show anchors if mouse is actually on the dropped shape.

@@ -4,37 +4,18 @@
     }
 
     getAnchors() {
-        var corners = this.getCorners();
-        var middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);
-        var middleBottom = new Point((corners[0].x + corners[1].x) / 2, corners[1].y);
-        var middleLeft = new Point(corners[0].x, (corners[0].y + corners[1].y) / 2);
-        var middleRight = new Point(corners[1].x, (corners[0].y + corners[1].y) / 2);
+        let corners = this.getCorners();
+        let middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);
+        let middleBottom = new Point((corners[0].x + corners[1].x) / 2, corners[1].y);
+        let middleLeft = new Point(corners[0].x, (corners[0].y + corners[1].y) / 2);
+        let middleRight = new Point(corners[1].x, (corners[0].y + corners[1].y) / 2);
 
-        var anchors = [
+        return [
             { anchor: middleTop, onDrag: this.topMove.bind(this) },
             { anchor: middleBottom, onDrag: this.bottomMove.bind(this) },
             { anchor: middleLeft, onDrag: this.leftMove.bind(this) },
             { anchor: middleRight, onDrag: this.rightMove.bind(this) }
         ];
-
-        return anchors;
-    }
-
-    getConnectionPoints() {
-        var corners = this.getCorners();
-        var middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);
-        var middleBottom = new Point((corners[0].x + corners[1].x) / 2, corners[1].y);
-        var middleLeft = new Point(corners[0].x, (corners[0].y + corners[1].y) / 2);
-        var middleRight = new Point(corners[1].x, (corners[0].y + corners[1].y) / 2);
-
-        var connectionPoints = [
-            { connectionPoint: middleTop },
-            { connectionPoint: middleBottom },
-            { connectionPoint: middleLeft },
-            { connectionPoint: middleRight }
-        ];
-
-        return connectionPoints;
     }
 
     getULCorner() {

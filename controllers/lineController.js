@@ -3,9 +3,7 @@
         super(mouseController, view, model);
     }
 
-    onDrag(dx, dy) {
-        super.onDrag(dx, dy);
-    }
+    onDrag(dx, dy) {super.onDrag(dx, dy);}
 
     translateEndpoint(idx, dx, dy) {
         switch (idx) {
