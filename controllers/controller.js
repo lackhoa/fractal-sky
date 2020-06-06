@@ -1,4 +1,5 @@
-﻿class Controller {
+﻿class Controller {  // Receives user input, route it to model, then update the view
+    // Of course we cannot forget the almighty "mouseController"
     constructor(mouseController, view, model) {
         this.mouseController = mouseController;
         this.view = view;
@@ -7,42 +8,23 @@
         this.wireUpEvents();
     }
 
-    get isSurfaceController() {
-        return false;
-    }
-
-    get isAnchorController() {
-        return false;
-    }
-
-    get isToolboxShapeController() {
-        return false;
-    }
-
-    get shouldShowAnchors() {
-        return true;
-    }
-
-    get hasConnectionPoints() {
-        return true;
-    }
+    get isSurfaceController() {return false;}
+    get isAnchorController() {return false;}
+    get isToolboxShapeController() {return false;}
+    get shouldShowAnchors() {return true;}
+    get hasConnectionPoints() {return true;}
 
     registerEvent(element, eventName, callbackRef) {
-        this.events.push({ element: element, eventName: eventName, callbackRef: callbackRef });
+        this.events.push({ element: element, eventName: eventName,
+                           callbackRef: callbackRef });
     }
 
-    destroy() {
-        this.unhookEvents();
-    }
+    destroy() {this.unhookEvents();}
 
     registerEventListener(element, eventName, callback, self) {
-        var ref;
-
-        if (self == null || self === undefined) {
-            self = this;
-        }
-
-        element.addEventListener(eventName, ref = callback.bind(self));
+        if (self == null || self === undefined) {self = this;}
+        var ref = callback.bind(self);
+        element.addEventListener(eventName, ref);
         this.registerEvent(element, eventName, ref);
     }
 
@@ -66,14 +48,12 @@
     getAbsoluteLocation(p) {
         p = p.translate(this.model.tx, this.model.ty);
         p = p.translate(surfaceModel.tx, surfaceModel.ty);
-
         return p;
     }
 
     getRelativeLocation(p) {
         p = p.translate(-this.model.tx, -this.model.ty);
         p = p.translate(-surfaceModel.tx, -surfaceModel.ty);
-
         return p;
     }
 
@@ -87,29 +67,24 @@
 
     onMouseUp() { }
 
-    // Default behavior
-    onDrag(dx, dy)
-    {
+    onDrag(dx, dy) {
         this.model.translate(dx, dy);
-        this.adjustConnections(dx, dy);
-    }
-
-    // Adjust all connectors connecting to this shape.
-    adjustConnections(dx, dy) {
-        var connections = diagramModel.connections.filter(c => c.shapeId == this.view.id);
+        // Adjust all connectors connecting to this shape.
+        let connections = diagramModel.connections.filter(c => c.shapeId == this.view.id);
         connections.map(c => {
             // TODO: Sort of nasty assumption here that the first controller is the line controller
-            var lineController = this.mouseController.getControllersById(c.lineId)[0];
+            let lineController = this.mouseController.getControllersById(c.lineId)[0];
             lineController.translateEndpoint(c.lineAnchorIdx, dx, dy);
         });
     }
 
     // Adjust the connectors connecting to this shape's connection point.
     adjustConnectorsAttachedToConnectionPoint(dx, dy, cpIdx) {
-        var connections = diagramModel.connections.filter(c => c.shapeId == this.view.id && c.shapeCPIdx == cpIdx);
+        let connections = diagramModel.connections.filter(c => ((c.shapeId == this.view.id) &&
+                                                                (c.shapeCPIdx == cpIdx)));
         connections.map(c => {
-            // TODO: Sort of nasty assumption here that the first controller is the line controller
-            var lineController = this.mouseController.getControllersById(c.lineId)[0];
+            // Nasty assumption: the first controller is the line controller
+            let lineController = this.mouseController.getControllersById(c.lineId)[0];
             lineController.translateEndpoint(c.lineAnchorIdx, dx, dy);
         });
     }

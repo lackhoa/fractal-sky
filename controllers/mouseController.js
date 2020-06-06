@@ -2,6 +2,8 @@ const LEFT_MOUSE_BUTTON = 0;
 const TOOLBOX_DRAG_MIN_MOVE = 3;
 
 class MouseController {
+    // it's not a controller in the MVC sense
+    // This is the "omniponent" object that is shared everywhere
     constructor() {
         this.mouseDown = false;
         this.controllers = {};
@@ -13,35 +15,25 @@ class MouseController {
         this.selectedShapeId = null;
         this.hoverShapeId = null;
 
-        // We really can't use movementX and movementY of the event because
-        // when the user moves the mouse quickly, the move events switch from
-        // the shape to the surface (or another shape) and this causes deviances
-        // in the movementX and movementY so that the shape is no longer positioned
-        // at the same location as when clicked down.
-        this.x = 0;
-        this.y = 0;
-        this.dx = 0;
-        this.dy = 0;
+        // We can't use movementX and movementY of the event because when the user moves the mouse quickly, the move events switch from the shape to the surface (or another shape)
+        this.x = 0; this.y = 0;
+        this.dx = 0; this.dy = 0;
     }
 
     // Attach as many controllers as you want to the view.
     attach(view, controller) {
-        var id = view.id;
-
+        let id = view.id;
         if (this.controllers[id] == undefined) {
             this.controllers[id] = [];
         }
-
         this.controllers[id].push(controller);
     }
 
     // Compare functions detach with destroyAll.
-    // We should probably implement a "destroy" method as well.
 
     // Detach all controllers associated with this view.
     detach(view) {
-        var id = view.id;
-        delete this.controllers[id];
+        delete this.controllers[view.id];
     }
 
     detachAll() {
@@ -61,7 +53,7 @@ class MouseController {
 
     // Detaches all controllers and unwires events associated with the controller.
     destroyAll() {
-        Object.entries(this.controllers).map(([key, val]) => val.map(v => v.destroy()));
+        this.controllers.map(ctr => ctr.map(v => v.destroy()));
         this.controllers = {};
     }
 
@@ -71,8 +63,7 @@ class MouseController {
                 // Don't remove surface, toolbox, objects group, or toolbox shapes.
                 if (!v.isSurfaceController && !v.isToolboxShapeController) {
                     v.destroy();
-                    // Hopefully deleting the dictionary entry while iterating won't be
-                    // a disaster since we called Object.entries!
+                    // Hopefully deleting the dictionary entry while iterating won't be a disaster since we called Object.entries!
                     delete this.controllers[key];
                 }
             });
@@ -80,52 +71,49 @@ class MouseController {
     }
 
     get isClick() {
-        var endDownX = this.x;
-        var endDownY = this.y;
-
-        var isClick = Math.abs(this.startDownX - endDownX) < TOOLBOX_DRAG_MIN_MOVE &&
-            Math.abs(this.startDownY - endDownY) < TOOLBOX_DRAG_MIN_MOVE;
-
-        return isClick;
+        // See if the mouse event is a click or a drag
+        let [dX, dY] = [(this.startDownX - this.x), (this.startDownY - this.y)];
+        return ((Math.abs(dX) < TOOLBOX_DRAG_MIN_MOVE) &&
+                (Math.abs(dY) < TOOLBOX_DRAG_MIN_MOVE));
     }
 
     onKeyDown(evt) {
-        var isOverShape = this.hoverShapeId != null;
+        let isOverShape = (this.hoverShapeId != null);
         var handled = false;
 
         if (isOverShape) {
             switch (evt.keyCode) {
-                case Constants.KEY_RIGHT:
-                    this.currentHoverControllers.map(c => c.onDrag(1, 0));
-                    handled = true;
-                    break;
-                case Constants.KEY_UP:
-                    this.currentHoverControllers.map(c => c.onDrag(0, -1));
-                    handled = true;
-                    break;
-                case Constants.KEY_LEFT:
-                    this.currentHoverControllers.map(c => c.onDrag(-1, 0));
-                    handled = true;
-                    break;
-                case Constants.KEY_DOWN:
-                    this.currentHoverControllers.map(c => c.onDrag(0, 1));
-                    handled = true;
-                    break;
-                case Constants.KEY_DELETE:
-                    // Mouse is "leaving" this control, this removes any anchors.
-                    this.currentHoverControllers.map(c => c.onMouseLeave());
-                    // Remove shape from diagram model, and all connections of this shape.
-                    diagramModel.removeShape(this.hoverShapeId);
-                    // Remove shape from mouse controller and detach events.
-                    this.destroyShapeById(this.hoverShapeId);
-                    // Remove from "objects" collection.
-                    var el = Helpers.getElement(this.hoverShapeId);
-                    el.parentNode.removeChild(el);
-                    // Cleanup.
-                    this.currentHoverControllers = [];
-                    this.hoverShapeId = null;
-                    handled = true;
-                    break;
+            case Constants.KEY_RIGHT:
+                this.currentHoverControllers.map(c => c.onDrag(1, 0));
+                handled = true;
+                break;
+            case Constants.KEY_UP:
+                this.currentHoverControllers.map(c => c.onDrag(0, -1));
+                handled = true;
+                break;
+            case Constants.KEY_LEFT:
+                this.currentHoverControllers.map(c => c.onDrag(-1, 0));
+                handled = true;
+                break;
+            case Constants.KEY_DOWN:
+                this.currentHoverControllers.map(c => c.onDrag(0, 1));
+                handled = true;
+                break;
+            case Constants.KEY_DELETE:
+                // Mouse is "leaving" this control, this removes any anchors.
+                this.currentHoverControllers.map(c => c.onMouseLeave());
+                // Remove shape from diagram model, and all connections of this shape.
+                diagramModel.removeShape(this.hoverShapeId);
+                // Remove shape from mouse controller and detach events.
+                this.destroyShapeById(this.hoverShapeId);
+                // Remove from "objects" collection.
+                var el = Helpers.getElement(this.hoverShapeId);
+                el.parentNode.removeChild(el);
+                // Cleanup.
+                this.currentHoverControllers = [];
+                this.hoverShapeId = null;
+                handled = true;
+                break;
             }
         }
 
@@ -167,18 +155,13 @@ class MouseController {
             this.selectedShapeId = null;
             this.x = evt.clientX;
             this.y = evt.clientY;
-            var isClick = this.isClick;
-
-            this.activeControllers.map(c => c.onMouseUp(isClick));
+            this.activeControllers.map(c => c.onMouseUp(this.isClick));
             this.clearSelectedObject();
 
             // Do this after the mouseDown flag is reset, otherwise anchors won't appear.
             if (this.draggingToolboxShape) {
                 // shapeBeingDraggedAndDropped is set by the ToolboxShapeController.
-                // We preserve this shape in case the user releases the mouse button
-                // while the mouse is over a different shape (like the surface) as
-                // as result of a very fast drag & drop where the shape hasn't caught
-                // up with the mouse, or the mouse is outside of shape's boundaries.
+                // We preserve this shape in case the user releases the mouse button while the mouse is over a different shape (like the surface) as a result of a very fast drag & drop where the shape hasn't caught up with the mouse, or the mouse is outside of shape's boundaries.
                 this.finishDragAndDrop(this.shapeBeingDraggedAndDropped, evt.currentTarget);
             }
         }
@@ -186,22 +169,20 @@ class MouseController {
 
     onMouseEnter(evt) {
         evt.preventDefault();
-        var id = evt.currentTarget.getAttribute("id");
+        let id = evt.currentTarget.getAttribute("id");
         this.hoverShapeId = id;
 
         if (this.mouseDown) {
-            // Doing a drag operation, so ignore shapes we enter and leave so
-            // that even if the mouse moves over another shape, we keep track
-            // of the shape we're dragging.
-        } else {
-            // Hover management.
+            // Dragging , so ignore shapes we enter and leave
+        } else {  // Hover management.
             if (this.leavingId != -1) {
                 console.log("Leaving " + this.leavingId);
 
                 // If we're entering an anchor, don't leave anything as we want to preserve the anchors.
                 if (!this.controllers[id][0].isAnchorController) {
                     this.currentHoverControllers.map(c => c.onMouseLeave());
-                    console.log("Entering " + id + " => " + this.controllers[id].map(ctrl=>ctrl.constructor.name).join(", "));
+                    let ctrlNames = this.controllers[id].map(ctrl=>ctrl.constructor.name).join(", ")
+                    console.log(`Entering ${id} => ${ctrlNames}`);
                     // Tell the new shape that we're entering.
                     this.currentHoverControllers = this.controllers[id];
                     this.currentHoverControllers.map(c => c.onMouseEnter());
@@ -220,21 +201,16 @@ class MouseController {
 
     // Returns the controllers associated with the SVG element.
     getControllers(evt) {
-        var id = evt.currentTarget.getAttribute("id");
-        var controllers = this.controllers[id];
-
-        return controllers;
+        let id = evt.currentTarget.getAttribute("id");
+        return this.controllers[id];
     }
 
     getControllersById(id) {
-        var controllers = this.controllers[id];
-
-        return controllers;
+        return this.controllers[id];
     }
 
     getControllersByElement(el) {
-        var id = el.getAttribute("id");
-
+        let id = el.getAttribute("id");
         return this.getControllersById(id);
     }
 
@@ -245,13 +221,13 @@ class MouseController {
 
     // Move the shape out of the toolbox group and into the objects group.
     // This requires dealing with surface translation.
-    // Show the anchors, because the mouse is currently over the shape since it
-    // is being drageed & dropped.
+    // Show the anchors, because the mouse is currently over the shape since it's being drageed & dropped.
     finishDragAndDrop(elDropped, elCurrent) {
         // Remove from toolbox group, translate, add to objects group.
         Helpers.getElement(Constants.SVG_TOOLBOX_ID).removeChild(elDropped);
-        var id = elDropped.getAttribute("id");
-        this.controllers[id].map(c => c.model.translate(-surfaceModel.tx + toolboxGroupController.model.tx, -surfaceModel.ty + toolboxGroupController.model.ty));
+        let id = elDropped.getAttribute("id");
+        this.controllers[id].map(c => c.model.translate(-surfaceModel.tx + toolboxGroupController.model.tx,
+                                                        -surfaceModel.ty + toolboxGroupController.model.ty));
         Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(elDropped);
 
         // Only show anchors if mouse is actually on the dropped shape.
@@ -263,4 +239,3 @@ class MouseController {
         this.draggingToolboxShape = false;
     }
 }
-

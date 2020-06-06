@@ -1,25 +1,20 @@
-﻿class View {
+﻿class View {  // This is the closest thing to the DOM
     constructor(svgElement, model) {
         this.svgElement = svgElement;
         model.eventPropertyChanged = this.onPropertyChange.bind(this);
     }
 
-    get id() {
-        return this.svgElement.getAttribute("id");
-    }
+    get id() {return this.svgElement.getAttribute("id");}
+    set id(val) {this.svgElement.setAttribute("id", val);}
 
-    set id(val) {
-        this.svgElement.setAttribute("id", val);
-    }
-
-    // Returns the ID of the first child, the "real" shape, of the group surrounding the shape.
-    get actualId() {
-        return this.actualElement.getAttribute("id");
-    }
+    // Gets the ID of the first child, the "real" shape, of the group surrounding the shape.
+    get actualId() {return this.actualElement.getAttribute("id");}
 
     // Anchors don't have a wrapping group so there are no child elements.
     get actualElement() {
-        return this.svgElement.firstElementChild == null ? this.svgElement : this.svgElement.firstElementChild;
+        if (this.svgElement.firstElementChild == null) {
+            return this.svgElement;
+        } else {return this.svgElement.firstElementChild}
     }
 
     onPropertyChange(property, value) {

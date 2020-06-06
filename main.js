@@ -37,155 +37,158 @@
   const SHAPE_NAME_ATTR = "shapename";
 
   // Global so UI can set the text of a text shape.
-  var mouseController = null;
+var mouseController = null;
 
-  // Global so we can access the surface translation.
-  var surfaceModel = null;
+// Global so we can access the surface translation.
+var surfaceModel = null;
 
-  // Global so clearSvg can reset the objects translation
-  var objectsModel = null;
+// Global so clearSvg can reset the objects translation
+var objectsModel = null;
 
-  // AnchorGroupController is global for the moment because it's used by all shape controllers.
-  var anchorGroupController = null;
+// AnchorGroupController is global for the moment because it's used by all shape controllers.
+var anchorGroupController = null;
 
-  // Global so we can add/remove shape models as they are dropped / removed from the diagram.
-  var diagramModel = null;
+// Global so we can add/remove shape models as they are dropped / removed from the diagram.
+var diagramModel = null;
 
-  // Global so we can move the toolbox around.
-  var toolboxGroupController = null;
+// Global so we can move the toolbox around.
+var toolboxGroupController = null;
 
-  document.getElementById(Constants.FILE_INPUT).addEventListener('change', readSingleFile, false);
-  document.onkeydown = onKeyDown;
+document.getElementById(Constants.FILE_INPUT).addEventListener('change', readSingleFile, false);
+document.onkeydown = onKeyDown;
 
-  // https://stackoverflow.com/a/1648854/2276361
-  // Read that regarding the difference between handling the event as a function
-  // vs in the HTML attribute definition.  Sigh.
-  function onKeyDown(evt) {
-      var handled = mouseController.onKeyDown(evt);
+// https://stackoverflow.com/a/1648854/2276361
+// Read that regarding the difference between handling the event as a function
+// vs in the HTML attribute definition.  Sigh.
+function onKeyDown(evt) {
+    var handled = mouseController.onKeyDown(evt);
 
-      if (handled) {
-          evt.preventDefault();
-      }
-  }
+    if (handled) {
+        evt.preventDefault();
+    }
+}
 
-  // https://w3c.github.io/FileAPI/
-  // https://stackoverflow.com/questions/3582671/how-to-open-a-local-disk-file-with-javascript
-  // Loading the file after it has been loaded doesn't trigger this event again because it's
-  // hooked up to "change", and the filename hasn't changed!
-  function readSingleFile(e) {
-      var file = e.target.files[0];
-      var reader = new FileReader();
-      reader.onload = loadComplete;
-      reader.readAsText(file);
-      // Clears the last filename(s) so loading the same file will work again.
-      document.getElementById(Constants.FILE_INPUT).value = "";
-  }
+// https://w3c.github.io/FileAPI/
+// https://stackoverflow.com/questions/3582671/how-to-open-a-local-disk-file-with-javascript
+// Loading the file after it has been loaded doesn't trigger this event again because it's
+// hooked up to "change", and the filename hasn't changed!
+function readSingleFile(e) {
+    var file = e.target.files[0];
+    var reader = new FileReader();
+    reader.onload = loadComplete;
+    reader.readAsText(file);
+    // Clears the last filename(s) so loading the same file will work again.
+    document.getElementById(Constants.FILE_INPUT).value = "";
+}
 
-  function loadComplete(e) {
-      var contents = e.target.result;
-      // If we don't do this, it adds the elements, but they have to have unique ID's
-      clearSvg();
-      diagramModel.deserialize(contents);
-  }
+function loadComplete(e) {
+    var contents = e.target.result;
+    // If we don't do this, it adds the elements, but they have to have unique ID's
+    clearSvg();
+    diagramModel.deserialize(contents);
+}
 
-  function clearSvg() {
-      mouseController.destroyAllButSurface();
-      surfaceModel.setTranslation(0, 0);
-      objectsModel.setTranslation(0, 0);
-      diagramModel.clear();
-      var node = Helpers.getElement(Constants.SVG_OBJECTS_ID);
-      Helpers.removeChildren(node);
-  }
+function clearSvg() {
+    mouseController.destroyAllButSurface();
+    surfaceModel.setTranslation(0, 0);
+    objectsModel.setTranslation(0, 0);
+    diagramModel.clear();
+    var node = Helpers.getElement(Constants.SVG_OBJECTS_ID);
+    Helpers.removeChildren(node);
+}
 
-  // https://stackoverflow.com/questions/23582101/generating-viewing-and-saving-svg-client-side-in-browser
-  function saveSvg() {
-      var json = diagramModel.serialize();
-      var blob = new Blob([json], { 'type': "image/json" });
+// https://stackoverflow.com/questions/23582101/generating-viewing-and-saving-svg-client-side-in-browser
+function saveSvg() {
+    var json = diagramModel.serialize();
+    var blob = new Blob([json], { 'type': "image/json" });
 
-      // We're using https://github.com/eligrey/FileSaver.js/
-      // but with the "export" (a require node.js thing) removed.
-      // There are several forks of this, not sure if there's any improvements in the forks.
-      saveAs(blob, Constants.FILENAME);
-  }
+    // We're using https://github.com/eligrey/FileSaver.js/
+    // but with the "export" (a require node.js thing) removed.
+    // There are several forks of this, not sure if there's any improvements in the forks.
+    saveAs(blob, Constants.FILENAME);
+}
 
-  // Update the selected shape's text.  Works only with text shapes right now.
-  function setText() {
-      if (mouseController.selectedControllers != null) {
-          var text = document.getElementById("text").value;
-          mouseController.selectedControllers.map(c => c.model.text = text);
-      }
-  }
+// Update the selected shape's text.  Works only with text shapes right now.
+function setText() {
+    if (mouseController.selectedControllers != null) {
+        var text = document.getElementById("text").value;
+        mouseController.selectedControllers.map(c => c.model.text = text);
+    }
+}
 
-  function registerToolboxItem(mouseController, elementId, fncCreateController) {
-      var svgElement = Helpers.getElement(elementId);
-      var model = new Model();
-      var view = new View(svgElement, model);
-      var controller = fncCreateController(mouseController, view, model);
-      mouseController.attach(view, controller);
-  }
+function registerToolboxItem(mouseController, elementId, fncCreateController) {
+    var svgElement = Helpers.getElement(elementId);
+    var model = new Model();
+    var view = new View(svgElement, model);
+    var controller = fncCreateController(mouseController, view, model);
+    mouseController.attach(view, controller);
+}
 
-  (function initialize() {
-      mouseController = new MouseController();
-      diagramModel = new DiagramModel(mouseController);
-      var svgSurface = Helpers.getElement(Constants.SVG_SURFACE_ID);
-      var svgObjects = Helpers.getElement(Constants.SVG_OBJECTS_ID);
-      var svgAnchors = Helpers.getElement(Constants.SVG_ANCHORS_ID);
-      var toolboxSurface = Helpers.getElement(Constants.SVG_TOOLBOX_SURFACE_ID);
-      var toolbox = Helpers.getElement(Constants.SVG_TOOLBOX_ID);
+(function initialize() {
+    mouseController = new MouseController();
+    diagramModel = new DiagramModel(mouseController);
+    let svgSurface = Helpers.getElement(Constants.SVG_SURFACE_ID);
+    let svgObjects = Helpers.getElement(Constants.SVG_OBJECTS_ID);
+    let svgAnchors = Helpers.getElement(Constants.SVG_ANCHORS_ID);
+    let toolboxSurface = Helpers.getElement(Constants.SVG_TOOLBOX_SURFACE_ID);
+    let toolbox = Helpers.getElement(Constants.SVG_TOOLBOX_ID);
 
-      surfaceModel = new SurfaceModel();
-      objectsModel = new ObjectsModel();
-      var anchorsModel = new Model();
-      var toolboxSurfaceModel = new Model();
+    surfaceModel = new SurfaceModel();
+    objectsModel = new ObjectsModel();
+    let anchorsModel = new Model();
+    let toolboxSurfaceModel = new Model();
 
-      var surfaceView = new SurfaceView(svgSurface, surfaceModel);
-      var objectsView = new ObjectsView(svgObjects, objectsModel);
-      var anchorsView = new AnchorView(svgAnchors, anchorsModel);
-      var toolboxSurfaceView = new View(toolboxSurface, toolboxSurfaceModel);
+    let surfaceView = new SurfaceView(svgSurface, surfaceModel);
+    let objectsView = new ObjectsView(svgObjects, objectsModel);
+    let anchorsView = new AnchorView(svgAnchors, anchorsModel);
+    let toolboxSurfaceView = new View(toolboxSurface, toolboxSurfaceModel);
 
-      var surfaceController = new SurfaceController(mouseController, surfaceView, surfaceModel);
-      var objectsController = new ObjectsController(mouseController, objectsView, objectsModel);
-      anchorGroupController = new AnchorGroupController(mouseController, anchorsView, anchorsModel);
+    let surfaceController = new SurfaceController(mouseController, surfaceView, surfaceModel);
+    let objectsController = new ObjectsController(mouseController, objectsView, objectsModel);
+    anchorGroupController = new AnchorGroupController(mouseController, anchorsView, anchorsModel);
 
-      // We need a controller to handle mouse events when the user moves the mouse fast enough
-      // on the toolbox to leave the shape being dragged and dropped, but it also needs to override
-      // onDrag because the toolbox can't be moved around.  TODO: At least, not at the moment.
-      var toolboxSurfaceController = new ToolboxSurfaceController(mouseController, toolboxSurfaceView, toolboxSurfaceModel);
+    // We need a controller to handle mouse events when the user moves the mouse fast enough on the toolbox to leave the shape being dragged and dropped, but it also needs to override onDrag because the toolbox can't be moved around.  TODO: At least, not at the moment.
+    let toolboxSurfaceController = new ToolboxSurfaceController(mouseController, toolboxSurfaceView, toolboxSurfaceModel);
 
-      // Attach both the surface and objects controller to the surface view so that events from the
-      // surface view are routed to both controllers, one for dealing with the grid, one for moving
-      // the objects on the surface and the surface is translated.
-      mouseController.attach(surfaceView, surfaceController);
-      mouseController.attach(surfaceView, objectsController);
-      mouseController.attach(toolboxSurfaceView, toolboxSurfaceController);
+    // Attach both the surface and objects controller to the surface view so that events from the surface view are routed to both controllers, one for dealing with the grid, one for moving the objects on the surface and the surface is translated.
+    mouseController.attach(surfaceView, surfaceController);
+    mouseController.attach(surfaceView, objectsController);
+    mouseController.attach(toolboxSurfaceView, toolboxSurfaceController);
 
-      var toolboxModel = new Model();
-      var toolboxView = new ToolboxView(toolbox, toolboxModel);
-      toolboxGroupController = new ToolboxGroupController(mouseController, toolboxView, toolboxModel);
-      // mouseController.attach(toolboxView, toolboxController);
+    let toolboxModel = new Model();
+    let toolboxView = new ToolboxView(toolbox, toolboxModel);
+    toolboxGroupController = new ToolboxGroupController(mouseController, toolboxView, toolboxModel);
+    // mouseController.attach(toolboxView, toolboxController);
 
-      // Example of creating a shape programmatically:
-      /*
-        var rectEl = Helpers.createElement('rect', { x: 240, y: 100, width: 60, height: 60, fill: "#FFFFFF", stroke: "black", "stroke-width": 1 });
-        var rectModel = new RectangleModel();
-        rectModel._x = 240;
-        rectModel._y = 100;
-        rectModel._width = 60;
-        rectModel._height = 60;
-        var rectView = new ShapeView(rectEl, rectModel);
-        var rectController = new RectangleController(mouseController, rectView, rectModel);
-        Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(rectEl);
-        mouseController.attach(rectView, rectController);
-        // Most shapes also need an anchor controller
-        mouseController.attach(rectView, anchorGroupController);
-      */
+    // Example of creating a shape programmatically:
+    /*
+      var rectEl = Helpers.createElement('rect', { x: 240, y: 100, width: 60, height: 60, fill: "#FFFFFF", stroke: "black", "stroke-width": 1 });
+      var rectModel = new RectangleModel();
+      rectModel._x = 240;
+      rectModel._y = 100;
+      rectModel._width = 60;
+      rectModel._height = 60;
+      var rectView = new ShapeView(rectEl, rectModel);
+      var rectController = new RectangleController(mouseController, rectView, rectModel);
+      Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(rectEl);
+      mouseController.attach(rectView, rectController);
+      // Most shapes also need an anchor controller
+      mouseController.attach(rectView, anchorGroupController);
+    */
 
-      // Create Toolbox Model-View-Controllers and register with mouse controller.
-      registerToolboxItem(mouseController, Constants.TOOLBOX_RECTANGLE_ID, (mc, view, model) => new ToolboxRectangleController(mc, view, model));
-      registerToolboxItem(mouseController, Constants.TOOLBOX_CIRCLE_ID, (mc, view, model) => new ToolboxCircleController(mc, view, model));
-      registerToolboxItem(mouseController, Constants.TOOLBOX_DIAMOND_ID, (mc, view, model) => new ToolboxDiamondController(mc, view, model));
-      registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_ID, (mc, view, model) => new ToolboxLineController(mc, view, model));
-      registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_WITH_START_ID, (mc, view, model) => new ToolboxLineWithStartController(mc, view, model));
-      registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_WITH_START_END_ID, (mc, view, model) => new ToolboxLineWithStartEndController(mc, view, model));
-      registerToolboxItem(mouseController, Constants.TOOLBOX_TEXT_ID, (mc, view, model) => new ToolboxTextController(mc, view, model));
-  })();
+    // Create Toolbox Model-View-Controllers and register with mouse controller.
+    registerToolboxItem(mouseController, Constants.TOOLBOX_RECTANGLE_ID,
+                        (mc, view, model) => new ToolboxRectangleController(mc, view, model));
+    registerToolboxItem(mouseController, Constants.TOOLBOX_CIRCLE_ID,
+                        (mc, view, model) => new ToolboxCircleController(mc, view, model));
+    registerToolboxItem(mouseController, Constants.TOOLBOX_DIAMOND_ID,
+                        (mc, view, model) => new ToolboxDiamondController(mc, view, model));
+    registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_ID,
+                        (mc, view, model) => new ToolboxLineController(mc, view, model));
+    registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_WITH_START_ID,
+                        (mc, view, model) => new ToolboxLineWithStartController(mc, view, model));
+    registerToolboxItem(mouseController, Constants.TOOLBOX_LINE_WITH_START_END_ID,
+                        (mc, view, model) => new ToolboxLineWithStartEndController(mc, view, model));
+    registerToolboxItem(mouseController, Constants.TOOLBOX_TEXT_ID,
+                        (mc, view, model) => new ToolboxTextController(mc, view, model));
+})();
