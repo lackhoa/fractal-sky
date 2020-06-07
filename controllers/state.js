@@ -2,7 +2,7 @@ const LEFT_MOUSE_BUTTON = 0;
 const TOOLBOX_DRAG_MIN_MOVE = 3;
 
 // This is not a controller in the MVC sense, it doesn't even control only mouse!
-// It's the "omniponent" object that is shared everywhere
+// It's the "omniponent" object that is shared everywhere, a kind of "coordinator"
 class State {
     constructor() {
         this.mouseDown = false;

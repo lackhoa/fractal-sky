@@ -1,5 +1,5 @@
-﻿// Controllers are not separate, since they must know about the state (eg whether or not the mouse is down)
-class Controller {  // Receives user input, route it to model, then update the view
+﻿class Controller {  // Receives user input, route it to model, then update the view
+    // Controllers are not separate, since they must know about the state (eg whether or not the mouse is down)
     constructor(state, view, model) {
         this.state = state;
         this.view = view;
@@ -59,11 +59,12 @@ class Controller {  // Receives user input, route it to model, then update the v
 
     wireUpEvents () {
         let el = this.view.svgElement;
+        let state = this.state;
         // Basically let the state handles everything, the end!
-        this.registerEventListener(el, "mousedown", this.state.onMouseDown, this.state);
-        this.registerEventListener(el, "mouseup", this.state.onMouseUp, this.state);
-        this.registerEventListener(el, "mousemove", this.state.onMouseMove, this.state);
-        this.registerEventListener(el, "mouseenter", this.state.onMouseEnter, this.state);
-        this.registerEventListener(el, "mouseleave", this.state.onMouseLeave, this.state);
+        this.registerEventListener(el, "mousedown", state.onMouseDown, state);
+        this.registerEventListener(el, "mouseup", state.onMouseUp, state);
+        this.registerEventListener(el, "mousemove", state.onMouseMove, state);
+        this.registerEventListener(el, "mouseenter", state.onMouseEnter, state);
+        this.registerEventListener(el, "mouseleave", state.onMouseLeave, state);
     }
 }

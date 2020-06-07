@@ -1,26 +1,26 @@
 // TODO: Prepend "Constants."
-  const Constants = {
-      SVG_NS: "http://www.w3.org/2000/svg",
-      SVG_SURFACE_ID: "surface",
-      SVG_TOOLBOX_SURFACE_ID: "toolboxSurface",
-      SVG_OBJECTS_ID: "objects",
-      SVG_TOOLBOX_ID: "toolbox",
-      SVG_ANCHORS_ID: "anchors",
-      SHAPE_CLASS_NAME: "svgShape",
-      FILE_INPUT: "fileInput",
-      OBJECT_GROUP_ID: "objectGroup",
-      FILENAME: "diagram.json",
-      TOOLBOX_RECTANGLE_ID: "toolboxRectangle",
-      TOOLBOX_CIRCLE_ID: "toolboxCircle",
-      TOOLBOX_DIAMOND_ID: "toolboxDiamond",
-      TOOLBOX_LINE_ID: "toolboxLine",
-      NEARBY_DELTA: 40,
-      KEY_RIGHT: 39,
-      KEY_UP: 38,
-      KEY_LEFT: 37,
-      KEY_DOWN: 40,
-      KEY_DELETE: 46,
-  };
+const Constants = {
+    SVG_NS: "http://www.w3.org/2000/svg",
+    SVG_SURFACE_ID: "surface",
+    SVG_TOOLBOX_SURFACE_ID: "toolboxSurface",
+    SVG_OBJECTS_ID: "objects",
+    SVG_TOOLBOX_ID: "toolbox",
+    SVG_ANCHORS_ID: "anchors",
+    SHAPE_CLASS_NAME: "svgShape",
+    FILE_INPUT: "fileInput",
+    OBJECT_GROUP_ID: "objectGroup",
+    FILENAME: "diagram.json",
+    TOOLBOX_RECTANGLE_ID: "toolboxRectangle",
+    TOOLBOX_CIRCLE_ID: "toolboxCircle",
+    TOOLBOX_DIAMOND_ID: "toolboxDiamond",
+    TOOLBOX_LINE_ID: "toolboxLine",
+    NEARBY_DELTA: 40,
+    KEY_RIGHT: 39,
+    KEY_UP: 38,
+    KEY_LEFT: 37,
+    KEY_DOWN: 40,
+    KEY_DELETE: 46,
+};
 
 const START_OF_DIAGRAM_TAG = "<diagram>";
 const END_OF_DIAGRAM_TAG = "</diagram>";
@@ -51,11 +51,9 @@ document.getElementById(Constants.FILE_INPUT).addEventListener('change', readSin
 
 // Handle keyDown events
 // https://stackoverflow.com/a/1648854/2276361
-// Read that regarding the difference between handling the event as a function
-// vs in the HTML attribute definition.  Sigh.
+// Read that regarding the difference between handling the event as a function vs in the HTML attribute definition.
 function onKeyDown(evt) {
-    var handled = state.onKeyDown(evt);
-
+    let handled = state.onKeyDown(evt);
     if (handled) {evt.preventDefault();}
 }
 document.onkeydown = onKeyDown;
@@ -130,7 +128,7 @@ function registerToolboxItem(state, elementId, fncCreateController) {
     let objectsController = new ObjectsController(state, objectsView, objectsModel);
     anchorGroupController = new AnchorGroupController(state, anchorsView, anchorsModel);
 
-    // We need a controller to handle mouse events when the user moves the mouse fast enough on the toolbox to leave the shape being dragged and dropped, but it also needs to override onDrag because the toolbox can't be moved around.  TODO: At least, not at the moment.
+    // We need a controller to handle mouse events when the user moves the mouse fast enough on the toolbox to leave the shape being dragged and dropped
     let toolboxSurfaceController = new ToolboxSurfaceController(state, toolboxSurfaceView, toolboxSurfaceModel);
 
     // Attach both the surface and objects controller to the surface view so that events from the surface view are routed to both controllers, one for dealing with the grid, one for moving the objects on the surface and the surface is translated.
