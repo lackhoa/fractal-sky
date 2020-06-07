@@ -65,7 +65,7 @@ class AnchorGroupController extends Controller {
             // Helpful for debugging
             el.setAttribute("id", "anchor" + i);
 
-            var anchorView = new View(el, anchorModels[i]);
+            var anchorView = new ShapeView(el, anchorModels[i]);
             var fncDragAnchor = this.partialOnDrag(anchorModels, anchorModels[i], anchorDefinition.onDrag);
             var anchorController = new AnchorController(this.state, anchorView, anchorModels[i], shapeController, fncDragAnchor, i);
             this.state.attach(anchorView, anchorController);

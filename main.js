@@ -100,7 +100,7 @@ function saveSvg() {
 function registerToolboxItem(state, elementId, fncCreateController) {
     var svgElement = Helpers.getElement(elementId);
     var model = new Model();
-    var view = new View(svgElement, model);
+    var view = new ShapeView(svgElement, model);
     var controller = fncCreateController(state, view, model);
     state.attach(view, controller);
 }
@@ -122,7 +122,7 @@ function registerToolboxItem(state, elementId, fncCreateController) {
     let surfaceView = new SurfaceView(svgSurface, surfaceModel);
     let objectsView = new ObjectsView(svgObjects, objectsModel);
     let anchorsView = new AnchorView(svgAnchors, anchorsModel);
-    let toolboxSurfaceView = new View(toolboxSurface, toolboxSurfaceModel);
+    let toolboxSurfaceView = new ShapeView(toolboxSurface, toolboxSurfaceModel);
 
     let surfaceController = new SurfaceController(state, surfaceView, surfaceModel);
     let objectsController = new ObjectsController(state, objectsView, objectsModel);
