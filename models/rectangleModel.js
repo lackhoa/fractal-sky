@@ -1,4 +1,4 @@
-﻿class RectangleModel extends ShapeModel {
+﻿class RectangleModel extends Model {
     constructor() {
         super();
         this._x = 0;

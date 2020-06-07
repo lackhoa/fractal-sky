@@ -1,26 +1,19 @@
-﻿class PathModel extends ShapeModel {
-    constructor() {
-        super();
-        this._d = null;
-    }
+﻿class PathModel extends Model {
+    constructor() {super(); this._d = null;}
 
     serialize() {
-        var model = super.serialize();
-        model.d = this._d;
-
-        return model;
+        let data = super.serialize();
+        data.d = this._d;
+        return data;
     }
-
-    deserialize(model, el) {
-        super.deserialize(model, el);
-        this.d = model.d;
+    deserialize(data, el) {
+        super.deserialize(data, el);
+        this.d = data.d;
     }
 
     get d() { return this._d; }
-
     set d(value) {
         this._d = value;
         this.propertyChanged("d", value);
     }
 }
-

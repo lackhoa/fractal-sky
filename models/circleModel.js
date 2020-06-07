@@ -1,25 +1,18 @@
-﻿class CircleModel extends ShapeModel {
+﻿class CircleModel extends Model {
     constructor() {
         super();
-        this._cx = 0;
-        this._cy = 0;
-        this._r = 0;
+        this._cx = 0; this._cy = 0; this._r = 0;
     }
 
     serialize() {
-        var model = super.serialize();
-        model.cx = this._cx;
-        model.cy = this._cy;
-        model.r = this._r;
-
-        return { Circle: model };
+        let data = super.serialize();
+        data.cx = this._cx; data.cy = this._cy; data.r = this._r;
+        return { Circle: data };
     }
 
-    deserialize(model, el) {
-        super.deserialize(model, el);
-        this.cx = model.cx;
-        this.cy = model.cy;
-        this.r = model.r;
+    deserialize(data, el) {
+        super.deserialize(data, el);
+        this.cx = data.cx; this.cy = data.cy; this.r = data.r;
     }
 
     get cx() { return this._cx; }

@@ -6,19 +6,8 @@ class Helpers {
                                                             c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))
     }
 
-    // https://stackoverflow.com/questions/17824145/parse-svg-transform-attribute-with-javascript
-    static parseTransform(transform) {
-        var transforms = {};
-        for (var i in a = transform.match(/(\w+\((\-?\d+\.?\d*e?\-?\d*,?)+\))+/g)) {
-            var c = a[i].match(/[\w\.\-]+/g);
-            transforms[c.shift()] = c;
-        }
-
-        return transforms;
-    }
-
     static getElement(id) {
-        return svg.getElementById(id);;
+        return svg.getElementById(id);
     }
 
     static getElements(className) {

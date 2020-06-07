@@ -1,6 +1,7 @@
 ﻿class GroupView {
     constructor(svgElement, model) {
         this.svgElement = svgElement;
+        // BAD: ties each model to a single view, not MVC at all!
         model.eventPropertyChanged = this.onPropertyChange.bind(this);
     }
 
