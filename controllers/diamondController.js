@@ -1,21 +1,4 @@
 ﻿class DiamondController extends ShapeController {
-    getAnchors() {
-        var corners = this.getCorners();
-        var middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);
-        var middleBottom = new Point((corners[0].x + corners[1].x) / 2, corners[1].y);
-        var middleLeft = new Point(corners[0].x, (corners[0].y + corners[1].y) / 2);
-        var middleRight = new Point(corners[1].x, (corners[0].y + corners[1].y) / 2);
-
-        var anchors = [
-            { anchor: middleTop, onDrag: this.topMove.bind(this) },
-            { anchor: middleBottom, onDrag: this.bottomMove.bind(this) },
-            { anchor: middleLeft, onDrag: this.leftMove.bind(this) },
-            { anchor: middleRight, onDrag: this.rightMove.bind(this) }
-        ];
-
-        return anchors;
-    }
-
     getConnectionPoints() {
         var corners = this.getCorners();
         var middleTop = new Point((corners[0].x + corners[1].x) / 2, corners[0].y);
@@ -49,36 +32,28 @@
         return p;
     }
 
-    topMove(anchors, anchor, dx, dy) {
+    topMove(dx, dy) {
         var ulCorner = this.getULCorner();
         var lrCorner = this.getLRCorner();
         this.changeHeight(ulCorner, lrCorner, -dy);
-        this.moveAnchor(anchors[0], 0, dy);          // top
-        this.moveAnchor(anchors[1], 0, -dy);         // bottom
     }
 
-    bottomMove(anchors, anchor, dx, dy) {
+    bottomMove(dx, dy) {
         var ulCorner = this.getULCorner();
         var lrCorner = this.getLRCorner();
         this.changeHeight(ulCorner, lrCorner, dy);
-        this.moveAnchor(anchors[0], 0, -dy);
-        this.moveAnchor(anchors[1], 0, dy);
     }
 
-    leftMove(anchors, anchor, dx, dy) {
+    leftMove(dx, dy) {
         var ulCorner = this.getULCorner();
         var lrCorner = this.getLRCorner();
         this.changeWidth(ulCorner, lrCorner, -dx);
-        this.moveAnchor(anchors[2], dx, 0);
-        this.moveAnchor(anchors[3], -dx, 0);
     }
 
-    rightMove(anchors, anchor, dx, dy) {
+    rightMove(dx, dy) {
         var ulCorner = this.getULCorner();
         var lrCorner = this.getLRCorner();
         this.changeWidth(ulCorner, lrCorner, dx);
-        this.moveAnchor(anchors[2], -dx, 0);
-        this.moveAnchor(anchors[3], dx, 0);
     }
 
     changeWidth(ulCorner, lrCorner, dx) {

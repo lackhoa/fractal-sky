@@ -32,8 +32,7 @@ class ToolboxShapeController extends Controller {
             // Hoist these controllers onto the mouse active controllers so it switches over to moving this shape.
             this.state.activeControllers = controllers;
             // Indiicate to the mouse controller that we're dragging a toolbox shape so that when it is dropped
-            // on the service, special things can happen - the shape is moved into the objects group and the
-            // anchors are shown.
+            // on the service, special things can happen - the shape is moved into the objects group
             this.state.draggingToolboxShape = true;
             this.state.shapeBeingDraggedAndDropped = emvc.el;
         }
@@ -50,9 +49,7 @@ class ToolboxShapeController extends Controller {
 
     attachToState(emvc) {
         this.state.attach(emvc.view, emvc.controller);
-        // Most shapes also need an anchor controller. An exception is the Text shape, at least for now.
-        this.state.attach(emvc.view, anchorGroupController);
 
-        return [emvc.controller, anchorGroupController];
+        return [emvc.controller];
     }
 }

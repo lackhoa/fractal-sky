@@ -8,7 +8,7 @@ class State {
         this.mouseDown = false;
         this.controllers = {};
         // Active controllers is not null when we're selecting a shape (mouse down on it)
-        // When we're dragging a shape, the active controllers are the shape and the anchor group controller. But if we just hover on it, it's null.
+        // When we're dragging a shape, the active controllers is the shape. But if we just hover on it, it's null.
         this.activeControllers = [];
         this.currentHoverControllers = [];
         this.leavingId = -1;
@@ -96,7 +96,7 @@ class State {
                 handled = true;
                 break;
             case Constants.KEY_DELETE:
-                // Mouse is "leaving" this control, this removes any anchors.
+                // Mouse is "leaving" the control
                 this.currentHoverControllers.map(c => c.onMouseLeave());
                 // Remove shape from diagram model, and all connections of this shape.
                 diagramModel.removeShape(this.hoverShapeId);
@@ -160,7 +160,6 @@ class State {
             this.activeControllers.map(c => c.onMouseUp(this.isClick));
             this.clearSelectedObject();
 
-            // Do this after the mouseDown flag is reset, otherwise anchors won't appear.
             if (this.draggingToolboxShape) {
                 // shapeBeingDraggedAndDropped is set by the ToolboxShapeController.
                 // We preserve this shape in case the user releases the mouse button while the mouse is over a different shape (like the surface) as a result of a very fast drag & drop where the shape hasn't caught up with the mouse, or the mouse is outside of shape's boundaries.
@@ -179,20 +178,15 @@ class State {
         } else {  // Hover management.
             if (this.leavingId != -1) {
                 console.log("Leaving " + this.leavingId);
-                if (!this.controllers[id][0].isAnchorController) {
-                    for (let c of this.currentHoverControllers) {
-                        c.onMouseLeave();
-                    }
-                    let ctrlNames = this.controllers[id].map(ctrl=>ctrl.constructor.name).join(", ")
-                    console.log(`Entering view ${id} => controllers ${ctrlNames}`);
-                    // Tell the new shape that we're entering.
-                    this.currentHoverControllers = this.controllers[id];
-                    for (let c of this.currentHoverControllers) {
-                        c.onMouseEnter();
-                    }
-                } else {
-                    // If we're entering an anchor, don't leave anything as we want to preserve the anchors.
-                    console.log("Leaving shape to enter anchor.");
+                for (let c of this.currentHoverControllers) {
+                    c.onMouseLeave();
+                }
+                let ctrlNames = this.controllers[id].map(ctrl=>ctrl.constructor.name).join(", ")
+                console.log(`Entering view ${id} => controllers ${ctrlNames}`);
+                // Tell the new shape that we're entering.
+                this.currentHoverControllers = this.controllers[id];
+                for (let c of this.currentHoverControllers) {
+                    c.onMouseEnter();
                 }
             }
         }
@@ -224,7 +218,6 @@ class State {
 
     // Move the shape out of the toolbox group and into the objects group.
     // This requires dealing with surface translation.
-    // Show the anchors, because the mouse is currently over the shape since it's being drageed & dropped.
     finishDragAndDrop(elDropped, elCurrent) {
         // Remove from toolbox group, translate, add to objects group.
         Helpers.getElement(Constants.SVG_TOOLBOX_ID).removeChild(elDropped);
@@ -234,12 +227,6 @@ class State {
                               -surfaceModel.ty + toolboxGroupController.model.ty);
         }
         Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(elDropped);
-
-        // Only show anchors if mouse is actually on the dropped shape.
-        if (id == elCurrent.getAttribute("id")) {
-            this.currentHoverControllers = this.controllers[id];
-            this.currentHoverControllers.map(c => c.onMouseEnter());
-        }
 
         this.draggingToolboxShape = false;
     }

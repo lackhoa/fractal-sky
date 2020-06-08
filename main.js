@@ -5,7 +5,6 @@ const Constants = {
     SVG_TOOLBOX_SURFACE_ID: "toolboxSurface",
     SVG_OBJECTS_ID: "objects",
     SVG_TOOLBOX_ID: "toolbox",
-    SVG_ANCHORS_ID: "anchors",
     SHAPE_CLASS_NAME: "svgShape",
     FILE_INPUT: "fileInput",
     OBJECT_GROUP_ID: "objectGroup",
@@ -37,9 +36,6 @@ var surfaceModel = null;
 
 // Global so clearSvg can reset the objects translation
 var objectsModel = null;
-
-// AnchorGroupController is global for the moment because it's used by all shape controllers.
-var anchorGroupController = null;
 
 // Global so we can add/remove shape models as they are dropped / removed from the diagram.
 var diagramModel = null;
@@ -110,23 +106,19 @@ function registerToolboxItem(state, elementId, fncCreateController) {
     diagramModel = new DiagramModel(state);
     let svgSurface = Helpers.getElement(Constants.SVG_SURFACE_ID);
     let svgObjects = Helpers.getElement(Constants.SVG_OBJECTS_ID);
-    let svgAnchors = Helpers.getElement(Constants.SVG_ANCHORS_ID);
     let toolboxSurface = Helpers.getElement(Constants.SVG_TOOLBOX_SURFACE_ID);
     let toolbox = Helpers.getElement(Constants.SVG_TOOLBOX_ID);
 
     surfaceModel = new SurfaceModel();
     objectsModel = new ObjectsModel();
-    let anchorsModel = new Model();
     let toolboxSurfaceModel = new Model();
 
     let surfaceView = new SurfaceView(svgSurface, surfaceModel);
     let objectsView = new ObjectsView(svgObjects, objectsModel);
-    let anchorsView = new AnchorView(svgAnchors, anchorsModel);
     let toolboxSurfaceView = new ShapeView(toolboxSurface, toolboxSurfaceModel);
 
     let surfaceController = new SurfaceController(state, surfaceView, surfaceModel);
     let objectsController = new ObjectsController(state, objectsView, objectsModel);
-    anchorGroupController = new AnchorGroupController(state, anchorsView, anchorsModel);
 
     // We need a controller to handle mouse events when the user moves the mouse fast enough on the toolbox to leave the shape being dragged and dropped
     let toolboxSurfaceController = new ToolboxSurfaceController(state, toolboxSurfaceView, toolboxSurfaceModel);
@@ -152,8 +144,6 @@ function registerToolboxItem(state, elementId, fncCreateController) {
       var rectController = new RectangleController(state, rectView, rectModel);
       Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(rectEl);
       state.attach(rectView, rectController);
-      // Most shapes also need an anchor controller
-      state.attach(rectView, anchorGroupController);
     */
 
     // Create Toolbox Model-View-Controllers and register with state.

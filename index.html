@@ -26,8 +26,6 @@
     <script src="views/view.js"></script>
 
     <script src="controllers/controller.js"></script>
-    <script src="controllers/anchorController.js"></script>
-    <script defer src="controllers/anchorGroupController.js"></script>
     <script src="controllers/state.js"></script>
     <script src="controllers/shapeController.js"></script>
     <script src="controllers/toolboxShapeController.js"></script>
@@ -91,8 +89,6 @@
         <g id="objectGroup">
           <g id="objects" transform="translate(0, 0)"></g>
         </g>
-        <!-- connection points are under anchor so that if we mouse up exactly on a connection point line, it is the anchor object, being above, that receives the mouse up event. -->
-        <g id="anchors"></g>
 
         <g id="toolbox" x="0" y="0">
           <rect id="toolboxSurface" x="0" y="0" width="200" height="170" fill="#FFFFFF" stroke="black" stroke-width="0.5" />

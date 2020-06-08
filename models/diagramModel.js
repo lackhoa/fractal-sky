@@ -88,11 +88,6 @@ class DiagramModel {
 
                 Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(el);
                 this.state.attach(view, controller);
-
-                // shapes also need an anchor controller
-                if (controller.shouldShowAnchors) {
-                    this.state.attach(view, anchorGroupController);
-                }
             }
         });
     }

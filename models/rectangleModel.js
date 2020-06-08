@@ -1,10 +1,8 @@
 ﻿class RectangleModel extends Model {
     constructor() {
         super();
-        this._x = 0;
-        this._y = 0;
-        this._width = 0;
-        this._height = 0;
+        this._x = 0; this._y = 0;
+        this._width = 0; this._height = 0;
     }
 
     serialize() {

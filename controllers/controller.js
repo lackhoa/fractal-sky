@@ -1,5 +1,5 @@
 ﻿class Controller {  // Receives user input, route it to model, then update the view
-    // Controllers are not separate, since they must know about the state (eg whether or not the mouse is down)
+    // Controllers coordinate through the state (eg whether or not the mouse is down)
     constructor(state, view, model) {
         this.state = state;
         this.view = view;
@@ -10,11 +10,7 @@
     }
 
     get isSurfaceController() {return false;}
-    get isAnchorController() {return false;}
     get isToolboxShapeController() {return false;}
-    get shouldShowAnchors() {return true;}
-    get hasConnectionPoints() {return true;}
-
 
     destroy() {this.unhookEvents();}
 
@@ -33,12 +29,12 @@
             var event = this.events[i];
             event.element.removeEventListener(event.eventName, event.callbackRef);
         }
-
         this.events = [];
     }
 
 
-    getAbsoluteLocation(p) {// I like how this changes its parameter
+    /** The shape itself is translated since it is grouped under the surface */
+    getAbsoluteLocation(p) {// I like how it changes its parameter
         p = p.translate(this.model.tx, this.model.ty);
         p = p.translate(surfaceModel.tx, surfaceModel.ty);
         return p;
