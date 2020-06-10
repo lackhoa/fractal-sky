@@ -6,7 +6,7 @@ class ToolboxShapeController extends Controller {
     onMouseUp(isClick) {
         if (isClick) {
             console.log("toolbox shape click");
-            var emvc = this.createElementAt(270, 130);
+            let emvc = this.createElementAt(270, 130);
             diagramModel.addModel(emvc.model, emvc.view.id);
             // Account for surface translation
             emvc.model.translate(-surfaceModel.tx, -surfaceModel.ty);

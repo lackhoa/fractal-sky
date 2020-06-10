@@ -1,5 +1,5 @@
 ﻿class Controller {  // Receives user input, route it to model, then update the view
-    // Controllers coordinate through the state (eg whether or not the mouse is down)
+    // Controllers coordinate through the state
     constructor(state, view, model) {
         this.state = state;
         this.view = view;
@@ -14,7 +14,7 @@
 
     destroy() {this.unhookEvents();}
 
-    // This is the function that registers the events!
+    // This is the function that registers the events for the DOM elements!
     registerEventListener(element, eventName, callback, self) {
         if (self == null || self === undefined) {self = this;}
         var ref = callback.bind(self);
@@ -46,7 +46,7 @@
         return p;
     }
 
-    // Routed from mouse controller:
+    // Routed from the state:
     onMouseEnter() { }
     onMouseLeave() { }
     onMouseDown() { }
@@ -56,7 +56,8 @@
     wireUpEvents () {
         let el = this.view.svgElement;
         let state = this.state;
-        // Basically let the state handles everything, the end!
+        // Route the DOM element's state to be handled by the state, that's it!
+        // I should call the state "the main controller"
         this.registerEventListener(el, "mousedown", state.onMouseDown, state);
         this.registerEventListener(el, "mouseup", state.onMouseUp, state);
         this.registerEventListener(el, "mousemove", state.onMouseMove, state);

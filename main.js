@@ -1,25 +1,10 @@
+'use strict';
+let e = React.createElement;
+let i = Immutable;
+let log = console.log;
+
 // TODO: Prepend "Constants."
-const Constants = {
-    SVG_NS: "http://www.w3.org/2000/svg",
-    SVG_SURFACE_ID: "surface",
-    SVG_TOOLBOX_SURFACE_ID: "toolboxSurface",
-    SVG_OBJECTS_ID: "objects",
-    SVG_TOOLBOX_ID: "toolbox",
-    SHAPE_CLASS_NAME: "svgShape",
-    FILE_INPUT: "fileInput",
-    OBJECT_GROUP_ID: "objectGroup",
-    FILENAME: "diagram.json",
-    TOOLBOX_RECTANGLE_ID: "toolboxRectangle",
-    TOOLBOX_CIRCLE_ID: "toolboxCircle",
-    TOOLBOX_DIAMOND_ID: "toolboxDiamond",
-    TOOLBOX_LINE_ID: "toolboxLine",
-    NEARBY_DELTA: 40,
-    KEY_RIGHT: 39,
-    KEY_UP: 38,
-    KEY_LEFT: 37,
-    KEY_DOWN: 40,
-    KEY_DELETE: 46,
-};
+let SVG_NS = "http://www.w3.org/2000/svg";
 
 const START_OF_DIAGRAM_TAG = "<diagram>";
 const END_OF_DIAGRAM_TAG = "</diagram>";
@@ -43,14 +28,10 @@ var diagramModel = null;
 // Global so we can move the toolbox around.
 var toolboxGroupController = null;
 
-document.getElementById(Constants.FILE_INPUT).addEventListener('change', readSingleFile, false);
-
 // Handle keyDown events
 // https://stackoverflow.com/a/1648854/2276361
 // Read that regarding the difference between handling the event as a function vs in the HTML attribute definition.
 function onKeyDown(evt) {
-    let handled = state.onKeyDown(evt);
-    if (handled) {evt.preventDefault();}
 }
 document.onkeydown = onKeyDown;
 
@@ -93,66 +74,163 @@ function saveSvg() {
     saveAs(blob, Constants.FILENAME);
 }
 
-function registerToolboxItem(state, elementId, fncCreateController) {
-    var svgElement = Helpers.getElement(elementId);
-    var model = new Model();
-    var view = new ShapeView(svgElement, model);
-    var controller = fncCreateController(state, view, model);
-    state.attach(view, controller);
+function uuidv4() {
+    return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g,
+                                                        c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))
 }
 
-(function initialize() {
-    state = new State();
-    diagramModel = new DiagramModel(state);
-    let svgSurface = Helpers.getElement(Constants.SVG_SURFACE_ID);
-    let svgObjects = Helpers.getElement(Constants.SVG_OBJECTS_ID);
-    let toolboxSurface = Helpers.getElement(Constants.SVG_TOOLBOX_SURFACE_ID);
-    let toolbox = Helpers.getElement(Constants.SVG_TOOLBOX_ID);
+function translate(model, tx, ty) {
+    let [a,b,c,d,e,f] = model.get("transform") || [1,0,0,1,0,0];
+    // Note that translation is scaled along with the transformation matrix
+    return model.set("transform", [a,b,c,d, e+tx, f+ty]);
+}
 
-    surfaceModel = new SurfaceModel();
-    objectsModel = new ObjectsModel();
-    let toolboxSurfaceModel = new Model();
+function cssMatrix(matrix) {  // `matrix` is a 6-array
+    return `matrix(${matrix.join(" ")})`
+}
 
-    let surfaceView = new SurfaceView(svgSurface, surfaceModel);
-    let objectsView = new ObjectsView(svgObjects, objectsModel);
-    let toolboxSurfaceView = new ShapeView(toolboxSurface, toolboxSurfaceModel);
+function shapeToCpn(model) {
+    // The model is just the tag + the props of the component, but with readable transform, and also immutable
+    let m = model.toJS();
+    let xform = m.transform;
+    // convert transform to CSS
+    if (xform) {m.transform = cssMatrix(xform);}
+    let type = m.type; delete m.type;
+    return e(type, m);
+}
 
-    let surfaceController = new SurfaceController(state, surfaceView, surfaceModel);
-    let objectsController = new ObjectsController(state, objectsView, objectsModel);
+let smallGrid = e("pattern",
+                  {id:"smallGrid",
+                   width:8, height:8, patternUnits:"userSpaceOnUse"},
+                  e("path",
+                    {id:"smallGridPath", d:"M 8 0 H 0 V 8", fill:"none",
+                     stroke:"gray", strokeWidth:"0.5"}));
 
-    // We need a controller to handle mouse events when the user moves the mouse fast enough on the toolbox to leave the shape being dragged and dropped
-    let toolboxSurfaceController = new ToolboxSurfaceController(state, toolboxSurfaceView, toolboxSurfaceModel);
+let largeGrid = e("pattern", {id:"largeGrid",
+                              width:80, height:80, patternUnits:"userSpaceOnUse"},
+                  e("rect", {id:"largeGridRect", width:80, height:80,
+                             fill:"url(#smallGrid)"}),
+                  e("path", {id:"largeGridPath", d:"M 80 0 H 0 V 80",
+                             fill:"none", stroke:"#AAAAAA", strokeWidth:2}));
 
-    // Attach both the surface and objects controller to the surface view so that events from the surface view are routed to both controllers, one for dealing with the grid, one for moving the objects on the surface and the surface is translated.
-    state.attach(surfaceView, surfaceController);
-    state.attach(surfaceView, objectsController);
-    state.attach(toolboxSurfaceView, toolboxSurfaceController);
+let commonShape = i.fromJS({fill:"transparent", stroke:"black",
+                            style: {cursor:"move"},
+                            vectorEffect: "non-scaling-stroke"});
+let rect = commonShape.merge({type:"rect", width:1, height:1,
+                              transform: [100, 0, 0, 100, 0, 0]});
+let circle = commonShape.merge({type:"circle", cx:0.5, cy:0.5, r:0.5,
+                                transform: [100, 0, 0, 100, 0, 0]});
 
-    let toolboxModel = new Model();
-    let toolboxView = new ToolboxView(toolbox, toolboxModel);
-    toolboxGroupController = new ToolboxGroupController(state, toolboxView, toolboxModel);
+// Translation is applied to both the surface and the shapes
+// Shapes are under 2 translations: by the view and by user's arrangement
+class App extends React.Component {
+    constructor(props) {
+        super(props);
+        // `state` (rather `state.data`) must be immutable, we cannot afford it to change EVER (by React)!
+        this.state = {data: i.fromJS({shapes: {},  // Maps from ids to shape models
+                                      xform: [1,0,0,1,0,0],  // viewport transform
+                                      mouseDown: null,  // stores mouse down position
+                                      focused: null,  // Focused shape id
+                                     })};
+        this.rect = this.bindControl(rect);
+        this.circle = this.bindControl(circle);
+    }
 
-    // Example of creating a shape programmatically:
-    /*
-      var rectEl = Helpers.createElement('rect', { x: 240, y: 100, width: 60, height: 60, fill: "#FFFFFF", stroke: "black", "stroke-width": 1 });
-      var rectModel = new RectangleModel();
-      rectModel._x = 240;
-      rectModel._y = 100;
-      rectModel._width = 60;
-      rectModel._height = 60;
-      var rectView = new ShapeView(rectEl, rectModel);
-      var rectController = new RectangleController(state, rectView, rectModel);
-      Helpers.getElement(Constants.SVG_OBJECTS_ID).appendChild(rectEl);
-      state.attach(rectView, rectController);
-    */
+    bindControl(model) {
+        // Let the app control everything
+        return model.merge({onMouseDown: (evt) => this.onMouseDown(evt),
+                            onMouseMove: (evt) => this.onMouseMove(evt),
+                            onMouseUp: (evt) => this.onMouseUp(evt)});
+    }
 
-    // Create Toolbox Model-View-Controllers and register with state.
-    registerToolboxItem(state, Constants.TOOLBOX_RECTANGLE_ID,
-                        (mc, view, model) => new ToolboxRectangleController(mc, view, model));
-    registerToolboxItem(state, Constants.TOOLBOX_CIRCLE_ID,
-                        (mc, view, model) => new ToolboxCircleController(mc, view, model));
-    registerToolboxItem(state, Constants.TOOLBOX_DIAMOND_ID,
-                        (mc, view, model) => new ToolboxDiamondController(mc, view, model));
-    registerToolboxItem(state, Constants.TOOLBOX_LINE_ID,
-                        (mc, view, model) => new ToolboxLineController(mc, view, model));
-})();
+    // My replacement of "setState"
+    imSetState(data) {this.setState({data: data})}
+
+
+    onMouseDown(evt) {
+        let data = this.state.data;
+        let pos = [evt.clientX, evt.clientY];
+        this.imSetState(data.merge({mouseDown: pos,
+                                    focused: evt.target.id}));
+    }
+
+    onMouseMove(evt) {
+        let data = this.state.data;
+        let mouseDown = data.get("mouseDown");
+        // If dragging, move the focused shape
+        if (mouseDown) {
+            let [x0,y0] = mouseDown;
+            let [x,y] = [evt.clientX, evt.clientY];
+            let data1 = data.set("mouseDown", [x,y]);  // Update the mouse for future dragging
+            let focused = data.get("focused");
+            if (focused == "grid") {
+                let [a,b,c,d,e,f] = data.get("xform");
+                this.imSetState(data1.merge({xform: [a,b,c,d,
+                                                     (e+(x-x0)),
+                                                     (f+(y-y0))]}));
+            } else {
+                this.imSetState(data1.updateIn(["shapes", focused],
+                                               (shape) => translate(shape, x-x0, y-y0)));
+            }
+        }
+    }
+
+    onMouseUp(evt) {
+        let data = this.state.data;
+        this.imSetState(data.merge({mouseDown: null}));
+    }
+
+    // Adding a shape from the original model
+    addShape(model) {
+        let data = this.state.data;
+        let shapes = data.get("shapes");
+        let [a,b,c,d,tx,ty] = data.get("xform");
+        // Create an identity and associate it to a new shape model
+        let key = uuidv4();
+        // Randomize spawn location
+        let [rx,ry] = [(Math.random())*20, (Math.random())*20];
+        // set `key` so it'll be available on the Virtual-DOM, but set `id` so it goes to the real DOM
+        let shape = translate(model,-tx+rx,-ty+ry).merge({key:key, id:key});
+        this.imSetState(data.merge({shapes: shapes.set(key, shape)}));
+    }
+
+    render() {
+        let data = this.state.data;
+        let shapes = data.get("shapes");
+        // Shapes that are actually rendered on the screen
+        let cpns = shapes.valueSeq().map(shapeToCpn).toJS();
+
+        return e(React.Fragment, {},
+                 // Controls
+                 e("div", {id:"controls"},
+                   e("button", {onClick: (evt) => {this.addShape(this.rect)}},
+                     "Rectangle"),
+                   e("button", {onClick: (evt) => {this.addShape(this.circle)}},
+                     "Circle")),
+
+                 // The svg group, storing the whole digram
+                 e("svg", {id:"svg", width:801, height:481, xmlns:SVG_NS,},
+                   e("g", {id:"surface",
+                           x:-80, y:-80, width:961, heigth:641,},
+                     e("defs", {id:"defs"}, smallGrid, largeGrid),
+                     e("rect", {id:"grid", x:-80, y:-80, width:961, height: 641,
+                                transform: cssMatrix(data.get("xform")),
+                                fill: "url(#largeGrid)",
+                                // The grid is subject to zooming & panning
+                                onMouseUp: (evt) => this.onMouseUp(evt),
+                                onMouseMove: (evt) => this.onMouseMove(evt),
+                                onMouseDown: (evt) => this.onMouseDown(evt),
+                               })),
+                   // The shapes
+                   e("g", {id:"objects",
+                           transform: cssMatrix(data.get("xform"))},
+                     cpns)));
+    }
+}
+
+let domContainer = document.getElementById("app");
+ReactDOM.render(e(App), domContainer);
+
+// Shape modification: ids for the control points are lists: the control is centralized, as usual
+// Change viewport size depending on the device
+// Implement zooming & panning: we can steal it from some libraries, it only needs to operate on the SVG data: https://github.com/chrvadala/react-svg-pan-zoom

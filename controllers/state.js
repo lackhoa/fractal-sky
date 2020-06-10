@@ -12,7 +12,6 @@ class State {
         this.activeControllers = [];
         this.currentHoverControllers = [];
         this.leavingId = -1;
-        this.draggingToolboxShape = false;
         this.selectedControllers = null;
         this.selectedShapeId = null;
         this.hoverShapeId = null;
@@ -78,24 +77,24 @@ class State {
         var handled = false;
 
         if (isOverShape) {
-            switch (evt.keyCode) {
-            case Constants.KEY_RIGHT:
+            switch (evt.key) {
+            case "ArrowRight":
                 this.currentHoverControllers.map(c => c.onDrag(1, 0));
                 handled = true;
                 break;
-            case Constants.KEY_UP:
+            case "ArrowUp":
                 this.currentHoverControllers.map(c => c.onDrag(0, -1));
                 handled = true;
                 break;
-            case Constants.KEY_LEFT:
+            case "ArrowLeft":
                 this.currentHoverControllers.map(c => c.onDrag(-1, 0));
                 handled = true;
                 break;
-            case Constants.KEY_DOWN:
+            case "ArrowDown":
                 this.currentHoverControllers.map(c => c.onDrag(0, 1));
                 handled = true;
                 break;
-            case Constants.KEY_DELETE:
+            case "Delete":
                 // Mouse is "leaving" the control
                 this.currentHoverControllers.map(c => c.onMouseLeave());
                 // Remove shape from diagram model, and all connections of this shape.

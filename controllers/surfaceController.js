@@ -5,8 +5,6 @@ class SurfaceController extends Controller {
 
     get isSurfaceController() {return true;}
 
-    get hasConnectionPoints() {return false;}
-
     // overrides Controller.onDrag
     onDrag(dx, dy) {
         this.model.updateTranslation(dx, dy);

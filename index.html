@@ -6,102 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="style.css">
     <title>FlowSharpWeb</title>
-    <!-- use https://www.minifier.org/ (https://github.com/matthiasmullie/minify)to minimize, as it is the only minizer that I tested that actually works. -->
-    <!--<script src="flowSharpWeb.all.js"></script>-->
-    <script src="prototypes.js"></script>
-    <script defer src="helpers.js"></script>
-    <script src="point.js"></script>
     <script src="fileSaver.js"></script>
-
-    <script src="models/model.js"></script>
-    <script src="models/diagramModel.js"></script>
-    <script src="models/objectsModel.js"></script>
-    <script src="models/surfaceModel.js"></script>
-    <script src="models/rectangleModel.js"></script>
-    <script src="models/circleModel.js"></script>
-    <script src="models/pathModel.js"></script>
-    <script src="models/diamondModel.js"></script>
-    <script src="models/lineModel.js"></script>
-
-    <script src="views/view.js"></script>
-
-    <script src="controllers/controller.js"></script>
-    <script src="controllers/state.js"></script>
-    <script src="controllers/shapeController.js"></script>
-    <script src="controllers/toolboxShapeController.js"></script>
-    <script src="controllers/surfaceController.js"></script>
-    <script src="controllers/objectsController.js"></script>
-    <script src="controllers/toolboxGroupController.js"></script>
-    <script src="controllers/toolboxSurfaceController.js"></script>
-
-    <script src="controllers/rectangleController.js"></script>
-    <script src="controllers/circleController.js"></script>
-    <script src="controllers/diamondController.js"></script>
-    <script src="controllers/lineController.js"></script>
-    <script src="controllers/toolboxRectangleController.js"></script>
-    <script src="controllers/toolboxCircleController.js"></script>
-    <script src="controllers/toolboxDiamondController.js"></script>
-    <script src="controllers/toolboxLineController.js"></script>
-
+    <script src="https://unpkg.com/react@16/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/immutable/3.8.2/immutable.min.js"></script>
     <script defer src="main.js"></script>
   </head>
 
   <body>
-    <div>
-      <!-- https://stackoverflow.com/questions/1944267/how-to-change-the-button-text-of-input-type-file -->
-      <!-- creates a hidden file input on routes the button to clicking on that tag -->
-      <button onclick="clearSvg()">Clear</button>
-      <button onclick="saveSvg()">Save</button>
-      <button onclick="document.getElementById('fileInput').click();">Load</button>
-      <input type="file" id="fileInput" style="display:none;" />
-    </div>
-
-    <div>
-      <svg id="svg" width="801" height="481" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="smallGrid" width="8" height="8" patternUnits="userSpaceOnUse">
-            <path id="smallGridPath" d="M 8 0 H 0 V 8" fill="none" stroke="gray" stroke-width="0.5" />
-          </pattern>
-          <pattern id="largeGrid" width="80" height="80" patternUnits="userSpaceOnUse">
-            <rect id="largeGridRect" width="80" height="80" fill="url(#smallGrid)" />
-            <!-- draw from upper right to upper left, then down to lower left -->
-            <!-- This creates the appearance of an 80x80 grid when stacked -->
-            <path id="largeGridPath" d="M 80 0 H 0 V 80" fill="none" stroke="gray" stroke-width="2" />
-          </pattern>
-          <marker id="trianglestart" viewBox="0 0 10 10" refX="0" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-            <!-- path looks like < but closed -->
-            <path d="M 10 0 L 0 5 L 10 10 z" />
-          </marker>
-          <marker id="triangleend" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto">
-            <!-- path looks like > but closed -->
-              <path d="M 0 0 L 10 5 L 0 10 z" />
-          </marker>
-        </defs>
-
-        <!-- A trick from sprite animations is to extend the scrolling region beyond the viewport and use mod W/H to reset the position to simulate a virtual space. -->
-        <!-- Creating a group is structural only.  One would think that elements could be added to the group and they would be moved as the group is transformed.
-             This is true, but when the mod operator resets the translation to (0, 0), any elements in this group will be reset to it's starting position as well. -->
-        <g id="surface" transform="translate(0, 0)" x="-80" y="-80" width="961" height="641">
-          <rect id="grid" x="-80" y="-80" width="961" height="641" fill="url(#largeGrid)" />
-        </g>
-        <!-- Instead, create a group just for the objects and transform this group without any modulus operation on the (x,y) position. -->
-        <!-- Also, we create an outer group so that on file load, we can remove the "objectGroup" and replace it with what got loaded. -->
-        <g id="objectGroup">
-          <g id="objects" transform="translate(0, 0)"></g>
-        </g>
-
-        <g id="toolbox" x="0" y="0">
-          <rect id="toolboxSurface" x="0" y="0" width="200" height="170" fill="#FFFFFF" stroke="black" stroke-width="0.5" />
-          <rect id="toolboxRectangle" x="10" y="10" width="40" height="40" stroke="black" stroke-width="1" fill="#FFFFFF" />
-          <circle id="toolboxCircle" cx="85" cy="29" r="21" stroke="black" stroke-width="1" fill="#FFFFFF" />
-          <path id="toolboxDiamond" d="M 140 10 L 115 30 L 140 50 L 165 30 Z" stroke="black" stroke-width="1" fill="#FFFFFF" />
-
-          <g id="toolboxLine">
-            <rect id="lineHiddenSelectionArea" x="10" y="70" width="40" height="40" stroke-opacity="0" fill-opacity="0" />
-            <line id="line" x1="10" y1="70" x2="50" y2="110" fill="#FFFFFF" stroke="black" stroke-width="1" />
-          </g>
-        </g>
-      </svg>
-    </div>
+    <div id="app"></div>
   </body>
 </html>
