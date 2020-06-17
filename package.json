@@ -1,0 +1,22 @@
+{
+  "name": "fractal-sky",
+  "version": "1.0.0",
+  "description": "Build upon the \"FlowSharpWeb\" project written in this article: https://www.codeproject.com/Articles/1237571/Build-a-Prototype-Web-Based-Diagramming-App-with-S",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lackhoa/fractal-sky.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lackhoa/fractal-sky/issues"
+  },
+  "homepage": "https://github.com/lackhoa/fractal-sky#readme",
+  "dependencies": {
+    "svg-pan-zoom": "^3.6.1"
+  }
+}
