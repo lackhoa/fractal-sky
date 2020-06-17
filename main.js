@@ -2,11 +2,10 @@
 let log = console.log;
 let [W, H] = [801, 481];
 
-// Handle keyDown events
-// https://stackoverflow.com/a/1648854/2276361
-// Read that regarding the difference between handling the event as a function vs in the HTML attribute definition.
-function onKeyDown(evt) {}
-document.onkeydown = onKeyDown;
+// Handling keyboard events
+var pressedKeys = {};
+window.onkeyup   = (e) => {pressedKeys[e.key] = false}
+window.onkeydown = (e) => {pressedKeys[e.key] = true}
 
 function uuidv4() {
   return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g,
@@ -17,27 +16,28 @@ function setAttr(el, data) {
   for (let [k, v] of Object.entries(data)) {
     if (k == "transform") {
       console.assert(v.length == 6);  // `v` is a 6-array
-      el.setAttribute("transform", `matrix(${v.join(" ")})`);}
+      el.setAttribute("transform", `matrix(${v.join(" ")})`)}
     else if (k == "style") {
-      for (let [sk, sv] of Object.entries(v)) {el.style[sk] = sv;}}
+      for (let [sk, sv] of Object.entries(v)) {el.style[sk] = sv}}
     else if (EVENT_LIST.includes(k)) {
       // Don't include these as attributes, better performance and avoid ES5/6 bugs
       // The "substring" is to remove the "on", because... I don't fucking know?
-      el.addEventListener(k.substring(2).toLowerCase(), v);}
-    else {el.setAttribute(k, v);}}
+      el.addEventListener(k.substring(2).toLowerCase(), v)}
+    else if (k != "type") {el.setAttribute(k, v)}}
   return el;}
 
 // Element-creation functions
-function e(type, data, children=[]) {
+function e(data, children=[]) {
+  // "data.type" holds the type of the element
   let ns = data.xmlns || "http://www.w3.org/1999/xhtml";
-  let el = document.createElementNS(ns, type);
+  let el = document.createElementNS(ns, data.type);
   setAttr(el, data);
   for (let c of children) {el.appendChild(c);};
   return el;}
 let SVG_NS = "http://www.w3.org/2000/svg";
 // Create svg element
-function es(type, data, children=[]) {
-  return e(type, {...data, xmlns:SVG_NS}, children);}
+function es(data, children=[]) {
+  return e({...data, xmlns:SVG_NS}, children);}
 function et(text) {
   return document.createTextNode(text);}
 
@@ -51,20 +51,23 @@ function tslate(model, tx, ty) {// The mutable version
 
 // These models define shape and their associated controls
 let commonShape = {fill:"transparent", stroke:"black",
-                   style: {cursor:"move"}, "vector-effect": "non-scaling-stroke"};
+                   "vector-effect": "non-scaling-stroke"};
 let rectModel = {...commonShape,
                  type:"rect", width:1, height:1};
-let frameModel = {...rectModel};
+
+let frameModel = {...commonShape, type:"rect",
+                  width:1, height:1, cursor:"move", fill:"#0000FF55",};
+let cornerModel = {...commonShape, type:"rect", width:0.1, height:0.1,
+                   fill:"red"  // Experimental settings
+                  };
 let circleModel = {...commonShape,
                    type:"circle", cx:0.5, cy:0.5, r:0.5};
 let lineModel = {...commonShape,
-                 type: "line", x1: 0, y1: 0, x2: 1, y2: 1};
+                 type: "line", x1:0, y1:0, x2:1, y2:1};
 
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
-var shapes = [];  // List of shape-groups
 var mouseDown = null;  // Previous mouse position (if it's down)
-var xforms = {};  // Store the transformations, for fast modification
 var focused = null;  // The focused shape-group
 var moveFn = null;  // Movement listener
 var panZoom = null;  // A third-party thing will be init later
@@ -81,36 +84,77 @@ class Rect {
     let [rx,ry] = [(Math.random())*20, (Math.random())*20];
     // Initialize state (fields which can be saved, so DON'T MUTATE them)
     this.id = uuidv4();
-    // panZoom's transform is: array V ➾ P(V) = zV+Δ (where Δ = [x,y])
-    // We want to skew that result to just be zV
-    // So we substitute V for (V - Δ/z)
-    this.xform = [DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
-                  (-x+rx)/z, (-y+ry)/z]
+
 
     // Rect-specific
     this.model = rectModel;
 
     // DOM element representing this shape
     let model = this.model;  // You want this overridden
-    this.controlGroup = es("g", {visibility: "hidden",
-                                 // Allways handle mouse event, visible or not
-                                 "pointer-events": "all"},
-                           [es(frameModel.type,
-                               {...frameModel,
-                                fill: "blue",  // Experimental
-                                onMouseEnter: (evt) => shapeOnMouseEnter(this),
-                                onMouseLeave: (evt) => shapeOnMouseLeave(this),
-                                onMouseDown: (evt) => shapeOnMouseDown(evt, this, this.move)})]);
-    this.el = es("g", {id:this.id, transform:this.xform},
-                 [es(model.type, model), this.controlGroup,]);
-    // Now we add the element to the DOM
-    let objects = document.getElementById("objects");
-    objects.appendChild(this.el);}
+    // The "bounding box" of a the shape-group, responsible for receiving focus and highlighting from the user
+    this.shape = es(model);
+    this.box = es({...frameModel, visibility: "hidden",
+                   // Allways handle mouse event, visible or not
+                   "pointer-events": "all",
+                   onMouseEnter: (evt) => ctrOnMouseEnter(this),
+                   onMouseLeave: (evt) => ctrOnMouseLeave(this),
+                   onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.move)});
+    this.controls = es(
+      {type:"g", visibility: "hidden",},
+      [// Horizontal resizing (right-side)
+        es({...cornerModel, x:0.9, y:0.45,
+            cursor:"e-resize",
+            onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.resizeR)}),
+        // Vertical resizing (bottom-side)
+        es({...cornerModel, x:0.45, y:0.9,
+            cursor:"s-resize",
+            onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.resizeB)}),
+        // Bottom-right corner
+        es({...cornerModel, x:0.9, y:0.9,
+            cursor:"se-resize",
+            onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.resizeBR2)})]);
 
-  showControls() {
-    setAttr(this.controlGroup, {visibility: "visible"})}
-  hideControls() {
-    setAttr(this.controlGroup, {visibility: "hidden"})}
+    // panZoom's transform is: array V ➾ P(V) = zV+Δ (where Δ = [x,y])
+    // We want to skew that result to just be zV
+    // So we substitute V for (V - Δ/z)
+    this.setXform([DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
+                   (-x+rx)/z, (-y+ry)/z]);
+    // Now we add the elements to the DOM
+    shapes.appendChild(this.shape);
+    controls.appendChild(this.controls)
+    boxes.appendChild(this.box)}
+
+  highlight() {
+    setAttr(this.box, {visibility: "visible"})}
+  unhighlight() {
+    setAttr(this.box, {visibility: "hidden"})}
+  focus() {
+    this.highlight();
+    setAttr(this.controls, {visibility: "visible"})}
+  unfocus() {
+    this.unhighlight();
+    setAttr(this.controls, {visibility: "hidden"})}
+
+  setXform(matrix) {
+    this.xform = matrix;
+    // Note: we update transform on the whole DOM group
+    setAttr(this.shape, {transform: matrix})
+    setAttr(this.box, {transform: matrix})
+    setAttr(this.controls, {transform: matrix})}
+
+  resizeBR(dx, dy) {
+    // Moves the bottom-right corner
+    // [dx, dy] will be offset given in screen coordinate
+    let z = panZoom.getZoom();
+    let [a,b,c,d,e,f] = this.xform;
+    // We account for zoom
+    this.setXform([a+dx/z,b, c,d+dy/z, e,f])}
+  resizeBRPreserveRatio(dx, dy) {this.resizeBR(dx,dx)}
+  resizeBR2(dx, dy) {// If "Shift" is pressed, preserve w/h ratio
+    if (pressedKeys["Shift"]) {this.resizeBRPreserveRatio(dx,dy)}
+    else {this.resizeBR(dx,dy)}}
+  resizeR(dx, dy) {this.resizeBR(dx, 0)}
+  resizeB(dx, dy) {this.resizeBR(0, dy)}
 
   move(dx, dy) {
     // Movement is calculated from offset, so panning doesn't matter, but zoom does
@@ -119,29 +163,26 @@ class Rect {
     // Movement: V → U, and we want P(U) = zV + Δ + δ (where δ = [x-x0, y-y0])
     // So let U := V+δ/z
     let [a,b,c,d,e,f] = this.xform;
-    this.xform = [a,b,c,d, e+dx/z, f+dy/z];
-    // Note: we update transform on the whole DOM group
-    setAttr(this.el, {transform: this.xform});}
+    this.setXform([a,b,c,d, e+dx/z, f+dy/z])}
 
   serialize() {return {id: this.id, xform: this.xform, model: this.model}}}
 
 // "that" is the shape-group responsible for calling this
-function shapeOnMouseEnter(that) {
-  if (!mouseDown) {that.showControls()}}
+function ctrOnMouseEnter(that) {
+  if (!mouseDown) {that.highlight()}}
 
 // "that" is the shape-group responsible for calling this
-function shapeOnMouseLeave(that) {
-  // Unless the user clicked on the element, hide controls
-  if (that != focused) {that.hideControls()}}
+function ctrOnMouseLeave(that) {that.unhighlight()}
 
-function shapeOnMouseDown(evt, that, msg) {
+function ctrOnMouseDown(evt, that, msg) {
   // evt.preventDefault();
   evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
   // "that" is the shape-group sending the event
   mouseDown = [evt.clientX, evt.clientY];
-  if (focused) {focused.hideControls()}  // Transfer focused
+  // User clicked, transfer focus to the receiving element
+  if (focused) {focused.unfocus()}
   focused = that;
-  focused.showControls();
+  focused.focus();
   moveFn = msg.bind(that);}
 
 function surfaceOnMouseMove(evt) {
@@ -155,41 +196,40 @@ function surfaceOnMouseMove(evt) {
     moveFn(x-x0, y-y0);}}
 
 {// The DOM
-  let lGrid = es("pattern",
-                 {id:"largeGrid",
+  let lGrid = es({type:"pattern", id:"largeGrid",
                   width:80, height:80, patternUnits:"userSpaceOnUse"},
-                 [es("rect", {width:80, height:80, fill:"none"}),
-                  es("path", {d:"M 80 0 H 0 V 80",
-                              fill:"none", stroke:"#777777", strokeWidth:2})]);
+                 [es({type:"rect", width:80, height:80, fill:"none"}),
+                  es({type:"path", d:"M 80 0 H 0 V 80",
+                      fill:"none", stroke:"#777777", strokeWidth:2})]);
 
   let app = document.getElementById("app");
-  let svg_el = es("svg", {id:"svg", width:W, height:H, fill:"black"},
+  let shapes = es({type:"g", id:"shapes"});
+  let controls = es({type:"g", id:"controls"});
+  let boxes = es({type:"g", id:"boxes"});
+  let svg_el = es({type:"svg", id:"svg", width:W, height:H, fill:"black"},
                   // pan-zoom wrapper wrap around here
-                  [es("g", {id:"surface",
-                            onMouseMove: surfaceOnMouseMove,
-                            onMouseUp: ((evt) => {mouseDown = null})},
-                      [es("defs", {id:"defs"}, [lGrid]),
-                       es("rect",
-                          {id:"grid", width:W, height: H,
+                  [es({type:"g", id:"surface",
+                       onMouseMove: surfaceOnMouseMove,
+                       onMouseUp: ((evt) => {mouseDown = null}),
+                       onMouseDown: ((evt) => {if (this.focused) {
+                         this.focused.unfocus()}})},
+                      [es({type:"defs", id:"defs"}, [lGrid]),
+                       es({type: "rect", id:"grid", width:W, height: H,
                            fill: "url(#largeGrid)"}),
-                       // Due to event propagation, events that aren't handled by any objects will be handled by the surface
-                       es("g", {id:"objects"})])]);
+                       // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
+                       shapes,
+                       boxes,
+                       controls])]);
 
-  let controls = e("div", {id:"controls"},
-                   [e("button", {onClick: (evt) => new Rect()},
-                      [et("Rectangle")]),
-                    // e("button", {onClick: (evt) => new Circle()},
-                    //   [et("Circle")]),
-                    // e("button", {onClick: (evt) => new Line()},
-                    //   [et("Line")])
-                   ]);
-  app.appendChild(controls);
+  let UI = e({type:"div", id:"UI"},
+             [e({type:"button", onClick: (evt) => new Rect()},
+                [et("Rectangle")])]);
+  app.appendChild(UI);
   app.appendChild(svg_el);
   // SVG panzoom only works with whole SVG elements
-  panZoom = svgPanZoom("#svg");}
+  panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
 // @TodoList
 // Save & restore is of highest priority
-// Shape modification: ids for the control points are lists: the control is centralized, as usual
+// Add "send-to-front/back"
 // Change viewport size depending on the device
-// Sort it out with the mutation
