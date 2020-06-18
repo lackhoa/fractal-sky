@@ -59,12 +59,10 @@ class Helpers {
 
     // https://stackoverflow.com/questions/3955229/remove-all-child-elements-of-a-dom-node-in-javascript
     static removeChildren(node) {
-        while (node.firstChild) {
-            node.removeChild(node.firstChild);
-        }
+        while (node.firstChild) {node.removeChild(node.firstChild)}
     }
 
-    static isNear(p1, p2, delta) {
-        return Math.abs(p1.x - p2.x) <= delta && Math.abs(p1.y - p2.y) <= delta;
-    }
+  static isNear(p1, p2, delta) {
+    return Math.abs(p1.x - p2.x) <= delta && Math.abs(p1.y - p2.y) <= delta;
+  }
 }
