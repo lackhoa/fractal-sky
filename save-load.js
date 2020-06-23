@@ -1,33 +1,35 @@
-// Loading the file after it has been loaded doesn't trigger this event again because it's hooked up to "change", and the filename hasn't changed!
+let fileInput = e("input", {type:"file", accept:".json", onChange:readSingleFile});
+// Gotta do this due to HTML BS
+function triggerUpload(evt) {fileInput.click()}
+
+// Load the saved contents
+function loadComplete(evt) {// Note: currently can only load 2D shapes
+  let contents = JSON.parse(evt.target.result);
+  clearSvg();
+  contents.map((mold) => {let sg = new Shape2D(mold);
+                          sg.register();});
+  // We will not allow undoing save-load for now (I mean when would you need that?)
+  undoStack.length = 0;
+  redoStack.length = 0;}
+
+// Event listener for when the user uploaded a file
 function readSingleFile(evt) {
   let file = evt.target.files[0];
   let reader = new FileReader();
   reader.onload = loadComplete;
   reader.readAsText(file);
-  // Clears the last filename(s) so loading the same file will work again.
+  // Clears the last filename(s) so loading the same file will trigger the "changed" event again.
   evt.target.value = "";}
 
-// document.getElementById("fileInput").addEventListener('change', readSingleFile, false);
-
-function loadComplete(evt) {
-  let contents = JSON.parse(evt.target.result);
-  clearSvg();
-  contents.map((data) => {let sg = new Shape2D(data.model, data);
-                          sg.register()})}
-
 function removeChildren(node) {
-  while (node.firstChild) {node.removeChild(node.firstChild)}
-}
+  while (node.firstChild) {node.removeChild(node.firstChild)}}
 
 function clearSvg() {
-  // @Question: Do I want to clean up all the objects manually? Or GC is enough?
-  shapeGroups = [];
   removeChildren(shapes);
   removeChildren(boxes);
-  removeChildren(controls);
-}
+  removeChildren(controls);}
 
 function saveDiagram() {
-  let json = shapeGroups.map((sg) => sg.serialize());
+  let json = shapeList.filter((s) => !s.inactive).map((s) => serialize(s));
   let blob = new Blob([JSON.stringify(json)], { "type": "text/json" });
-  saveAs(blob, "diagram.json")}
+  saveAs(blob, "diagram.json");}

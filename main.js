@@ -1,205 +1,247 @@
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
-var mouseDown = null;  // Previous mouse position (if it's down)
-var focused = null;  // The focused shape-group
+var panZoom = null;  // A third-party svg pan-zoom thing
+var mouseDown = null;  // Previous mouse position (in svg coordinate). The event attribute is no use because movement can be handled by different elements
+var focused = null;  // The focused shape
 var moveFn = null;  // Movement listener
-var panZoom = null;  // A third-party thing will be init later
-var shapeGroups = [];  // Keep track of all added shape-groups
+let shapeList = [];  // Keep track of all added shapes (including the ones removed)
 
 'use strict';
 let log = console.log;
 let [W, H] = [801, 481];
 
+// Undo/Redo stuff
+// "undoStack" and "redoStack" are lists of commands
+// Commands are like {action: "remove"/"create"/"edit", shape: <shape ptr>, controller: <arbitrary string>, attr: <attr name>, before: <attr val before>, after: <attr val after>}
+// The latter half of the keys are only needed for edits
+// Deleted shapes linger around, since they're needed for undo
+let undoStack = [];
+let redoStack = [];
+function canUndo() {return (undoStack.length != 0)};
+function canRedo() {return (redoStack.length != 0)};
+function tryUndo() {if (canUndo()) {undo()} else {log("Cannot undo!")}}
+function tryRedo() {if (canRedo()) {redo()} else {log("Cannot redo!")}}
+let undoBtn = e("button", {onClick:undo, disabled:true}, [et("Undo")]);
+let redoBtn = e("button", {onClick:redo, disabled:true}, [et("Redo")]);
+function updateUndoUI() {
+  undoBtn.disabled = !canUndo();
+  redoBtn.disabled = !canRedo();}
+
+function undo() {
+  let cmd = undoStack.pop();
+  switch (cmd.action) {
+  case "create":
+    log("I'm gonna remove!"); break;
+  case "remove":
+    log("I'm gonna create!"); break
+  case "edit":
+    log("I'm gonna undo edit!"); break;
+  default:
+    throw("Illegal action", cmd.action)}
+  redoStack.push(cmd);
+  log({undo: undoStack, redo: redoStack});
+  updateUndoUI();}
+
+function redo() {
+  let cmd = redoStack.pop();
+  switch (cmd.action) {
+  case "create":
+    log("I'm gonna create!"); break;
+  case "remove":
+    log("I'm gonna remove!"); break
+  case "edit":
+    log("I'm gonna redo edit!"); break;
+  default:
+    throw("Illegal action", cmd.action)}
+  undoStack.push(cmd);
+  log({undo: undoStack, redo: redoStack});
+  updateUndoUI();}
+
 // Handling keyboard events
-var pressedKeys = {};
-window.onkeyup   = (e) => {pressedKeys[e.key] = false}
-window.onkeydown = (e) => {pressedKeys[e.key] = true}
-
-function uuidv4() {
-  return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g,
-                                                      c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))}
-
-let EVENT_LIST = ["onMouseMove", "onMouseEnter", "onMouseLeave", "onMouseUp", "onMouseDown", "onClick", "onChange"];
-function setAttr(el, data) {
-  for (let [k, v] of Object.entries(data)) {
-    if (k == "transform") {
-      console.assert(v.length == 6);  // `v` is a 6-array
-      el.setAttribute("transform", `matrix(${v.join(" ")})`)}
-    else if (k == "style") {
-      for (let [sk, sv] of Object.entries(v)) {el.style[sk] = sv}}
-    else if (EVENT_LIST.includes(k)) {
-      // Don't include these as attributes, better performance and avoid ES5/6 bugs
-      // The "substring" is to remove the "on", because... I don't fucking know?
-      el.addEventListener(k.substring(2).toLowerCase(), v)}
-    else {el.setAttribute(k, v)}}
-  return el;}
-
-// Element-creation functions
-function e(tag, data, children=[]) {
-  // "data.type" holds the type of the element
-  let ns = data.xmlns || "http://www.w3.org/1999/xhtml";
-  let el = document.createElementNS(ns, tag);
-  setAttr(el, data);
-  for (let c of children) {el.appendChild(c);};
-  return el;}
-let SVG_NS = "http://www.w3.org/2000/svg";
-// Create svg element
-function es(tag, data, children=[]) {
-  return e(tag, {...data, xmlns:SVG_NS}, children);}
-function et(text) {
-  return document.createTextNode(text);}
+let keymap = {"ctrl-z": tryUndo,
+              "ctrl-y": tryRedo,}
+window.onkeydown = (evt) => {
+  let keys = [];
+  if (evt.ctrlKey) {keys.push("ctrl")}
+  if (evt.shiftKey) {keys.push("shift")}
+  keys.push(evt.key);
+  let lookup = keymap[keys.join("-")];
+  if (lookup) {lookup()};}
 
 function translate(model, tx, ty) {
   let [a,b,c,d,e,f] = model.transform || [1,0,0,1,0,0];
   // Note that translation is scaled along with the transformation matrix
   return {...model, transform: [a,b,c,d, e+tx, f+ty]};}
+
 function tslate(model, tx, ty) {// The mutable version
   let [a,b,c,d,e,f] = model.transform || [1,0,0,1,0,0];
   model.transform = [a,b,c,d, e+tx, f+ty];}
 
 // These models define shape and their associated controls
-// Note: "tag" denotes the DOM element's tag
-let commonShape = {fill:"transparent", stroke:"black",
-                   "vector-effect": "non-scaling-stroke"};
-let rectModel = {...commonShape,
-                 tag:"rect", width:1, height:1};
-let circModel = {...commonShape,
-                 tag:"circle", cx:0.5, cy:0.5, r:0.5};
-let lineModel = {...commonShape,
-                 tag: "line", x1:0, y1:0, x2:1, y2:1};
+// Note: "tag" denotes the DOM element's tag, other attributes are consistent with my DOM model
+let commonMold = {fill:"transparent", stroke:"black",
+                  "vector-effect": "non-scaling-stroke"};
+let rectMold = {...commonMold, tag:"rect", width:1, height:1};
+let circMold = {...commonMold, tag:"circle", cx:0.5, cy:0.5, r:0.5};
+let lineMold = {...commonMold, tag: "line", x1:0, y1:0, x2:1, y2:1};
 
-let frameModel = {...commonShape, tag:"rect",
-                  width:1, height:1, cursor:"move", fill:"#0000FF55",};
-let cornerModel = {...commonShape, tag:"rect", width:0.1, height:0.1,
-                   fill:"red"  // Experimental settings
-                  };
+let frameMold = {...commonMold, tag:"rect",
+                 width:1, height:1, cursor:"move", fill:"#0000FF55",};
+let cornerMold = {...commonMold, tag:"rect", width:0.1, height:0.1, fill:"red"};
 
 // Adding a shape from a model
 let DEFAULT_SCALE = 100;
 
-class Shape2D {
-  // Creates and adds a group containing the shape and its controls to the DOM
+// Save the command to the undo stack
+function issueCmd(cmd) {
+  undoStack.push(cmd);
+  redoStack.length = 0;  // Empty out the redoStack
+  updateUndoUI();}
+
+function LockedObj(init, updateFn) {
+  // Guarantees no mutation without
+  var val = {};
+  this.set = (k,newVal) => {
+    updateFn(k,val,newVal);
+    val[k] = newVal;};
+  this.get = (k) => val[k];
+  // Only returns copies: no mutation allowed!
+  this.getAll = () => {return {...val}};
+  for (let [k,v] of Object.entries(init)) {
+    this.set(k, v)}}
+
+function serialize(shape) {return shape.getModel()}
+
+// Function that abstracts many drag events handled by shape controllers
+function Shape2D(mold={}) {
+  // Creates and adds a group containing the shape and its controls from a mold
+  // The mold contains the DOM tag and initial attributes
   // Optionally pass in `data` for serialization purpose
-  constructor(model, data={}) {
-    // Initialize state (fields which can be saved, so DON'T MUTATE them)
-    this.id = data.id || uuidv4();
+  let that = this;  // Weird trick to make "this" work in private function
+  let moldCopy = {...mold};
 
-    // The "bounding box" of a the shape-group, responsible for receiving focus and highlighting from the user
-    this.model = model;
-    let {tag, ...attrs} = model;
-    this.shape = es(tag, attrs);
-    this.box = es(frameModel.tag,
-                  {...frameModel, visibility: "hidden",
-                   // Allways handle mouse event, visible or not
-                   "pointer-events": "all",
-                   onMouseEnter: (evt) => ctrOnMouseEnter(this),
-                   onMouseLeave: (evt) => ctrOnMouseLeave(this),
-                   onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.move)});
-    let ctag = cornerModel.tag;
-    this.controls = es(
-      "g", {visibility: "hidden",},
-      [// Horizontal resizing (right-side)
-        es(ctag, {...cornerModel, x:0.9, y:0.45,
-                  cursor:"e-resize",
-                  onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.resizeR)}),
-        // Vertical resizing (bottom-side)
-        es(ctag, {...cornerModel, x:0.45, y:0.9,
-                  cursor:"s-resize",
-                  onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.resizeB)}),
-        // Bottom-right corner
-        es(ctag, {...cornerModel, x:0.9, y:0.9,
-                  cursor:"se-resize",
-                  onMouseDown: (evt) => ctrOnMouseDown(evt, this, this.resizeBR2)})]);
-
-    // Calculating spawn location
-    if (data.xform) {this.setXform(data.xform)}
-    else {
-      let {x,y} = panZoom.getPan();
-      let z = panZoom.getZoom();
-      let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
-      // panZoom's transform is: array V ➾ P(V) = zV+Δ (where Δ = [x,y])
-      // Substituting (V - Δ/z) for V skews that result to just be zV
-      this.setXform([DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
-                     (-x+rx)/z, (-y+ry)/z])}}
-
-  register() {// The constructor does not have side-effect, this does
-    // We add the view to the DOM
-    shapes.appendChild(this.shape);
-    controls.appendChild(this.controls)
-    boxes.appendChild(this.box)
-    // Register this shape-group to the app
-    shapeGroups.push(this)}
-
-  highlight() {
-    setAttr(this.box, {visibility: "visible"})}
-  unhighlight() {
-    setAttr(this.box, {visibility: "hidden"})}
-  focus() {
-    this.highlight();
-    setAttr(this.controls, {visibility: "visible"})}
-  unfocus() {
-    this.unhighlight();
-    setAttr(this.controls, {visibility: "hidden"})}
-
-  setXform(matrix) {
-    this.xform = matrix;
-    // Note: we update transform on the whole DOM group
-    setAttr(this.shape, {transform: matrix})
-    setAttr(this.box, {transform: matrix})
-    setAttr(this.controls, {transform: matrix})}
-
-  resizeBR(dx, dy) {
-    // Moves the bottom-right corner
-    // [dx, dy] will be offset given in screen coordinate
+  // Calculating spawn location
+  if (!moldCopy.transform) {
+    let {x,y} = panZoom.getPan();
     let z = panZoom.getZoom();
-    let [a,b,c,d,e,f] = this.xform;
-    // We account for zoom
-    this.setXform([a+dx/z,b, c,d+dy/z, e,f])}
-  resizeBRPreserveRatio(dx, dy) {this.resizeBR(dx,dx)}
-  resizeBR2(dx, dy) {// If "Shift" is pressed, preserve w/h ratio
-    if (pressedKeys["Shift"]) {this.resizeBRPreserveRatio(dx,dy)}
-    else {this.resizeBR(dx,dy)}}
-  resizeR(dx, dy) {this.resizeBR(dx, 0)}
-  resizeB(dx, dy) {this.resizeBR(0, dy)}
-
-  move(dx, dy) {
-    // Movement is calculated from offset, so panning doesn't matter, but zoom does
-    let z = panZoom.getZoom();
+    let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
     // panZoom's transform is: array V ➾ P(V) = zV+Δ (where Δ = [x,y])
-    // Movement: V → U, and we want P(U) = zV + Δ + δ (where δ = [x-x0, y-y0])
-    // So let U := V+δ/z
-    let [a,b,c,d,e,f] = this.xform;
-    this.setXform([a,b,c,d, e+dx/z, f+dy/z])}
+    // Substituting (V - Δ/z) for V skews that result to just be zV
+    moldCopy.transform = [DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
+                          (-x+rx)/z, (-y+ry)/z]}
 
-  serialize() {return {id: this.id, xform: this.xform, model: this.model}}}
+  let {tag, ...attrs} = {...moldCopy};
+  let shape = es(tag, attrs);
 
-// "that" is the shape-group responsible for calling this
-function ctrOnMouseEnter(that) {
-  if (!mouseDown) {that.highlight()}}
+  // "Bounding box" of the shape, responsible for highlighting and receiving hover
+  let box = es(
+    frameMold.tag,
+    {...frameMold, visibility: "hidden",
+     // Allways handle mouse event, visible or not
+     "pointer-events": "all",
+     onMouseEnter: () => {if (!mouseDown) {highlight()}},
+     // The mouse can leave a shape and still be dragging it
+     onMouseLeave: () => {if (that != focused) {unhighlight()}},
+     onMouseDown: ctrOnMouseDown(move)});
 
-// Note that the mouse can leave a shape being dragged, and still be dragging it (when it enters a shape on an upper layer)
-function ctrOnMouseLeave(that) {if (that != focused) {that.unhighlight()}}
+  let ctag = cornerMold.tag;
+  let controls = es(
+    "g", {visibility: "hidden",},
+    [// Horizontal resizing (right-side)
+      es(ctag, {...cornerMold, x:0.9, y:0.45,
+                cursor:"e-resize",
+                onMouseDown: ctrOnMouseDown(resizeR)}),
+      // Vertical resizing (bottom-side)
+      es(ctag, {...cornerMold, x:0.45, y:0.9,
+                cursor:"s-resize",
+                onMouseDown: ctrOnMouseDown(resizeB)}),
+      // Bottom-right corner
+      es(ctag, {...cornerMold, x:0.9, y:0.9,
+                cursor:"se-resize",
+                onMouseDown: ctrOnMouseDown(resizeBRDispatch)})]);
+  function focus() {
+    highlight();
+    setAttr(controls, {visibility: "visible"})}
 
-function ctrOnMouseDown(evt, that, msg) {
-  // evt.preventDefault();
-  evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
-  // "that" is the shape-group sending the event
-  mouseDown = [evt.clientX, evt.clientY];
-  // User clicked, transfer focus to the receiving element
-  if (focused) {focused.unfocus()}
-  focused = that;
-  focused.focus();
-  moveFn = msg.bind(that);}
+  let model = new LockedObj(
+    moldCopy,
+    (k,_,v) => {
+      // Update the associated element
+      setAttr(shape, {[k]: v});
+      if (k == "transform") {
+        // transform is applied to all associated DOM groups
+        setAttr(box, {transform: v});
+        setAttr(controls, {transform: v});}});
 
-function surfaceOnMouseMove(evt) {
-  if (mouseDown && moveFn) {// If dragging, and there's an active listener
-    evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
-    let [x0,y0] = mouseDown;
-    // Update the mouse position for future dragging
-    let [x,y] = [evt.clientX, evt.clientY];
-    mouseDown = [x,y];
-    // Our job is done let the active controller deal with the offset
-    moveFn(x-x0, y-y0);}}
+  function unfocus() {
+    unhighlight();
+    setAttr(controls, {visibility: "hidden"})}
+  this.unfocus = unfocus.bind(this);
+
+  // Abstraction on mouse event handlers
+  function ctrOnMouseDown (msg) {
+    // Returns an event handler
+    return (evt) => {
+      evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
+      let z = panZoom.getZoom();
+      mouseDown = [evt.clientX/z, evt.clientY/z];
+      // User clicked, transfer focus to the receiving element
+      if (focused != that) {
+        if (focused) {focused.unfocus()}
+        focus();
+        focused = that;}
+      // The same shape might have different "controllers", so we bind the moveFn regardless
+      moveFn = msg.bind(that);}}
+
+  function highlight() {setAttr(box, {visibility: "visible"})}
+  function unhighlight() {setAttr(box, {visibility: "hidden"})}
+
+  function resizeBR([dx,dy]) {// [dx, dy] is offset given in svg coordinate
+    // Moves the bottom-right corner
+    let [a,b,c,d,e,f] = model.get("transform");
+    model.set("transform", [a+dx,b, c,d+dy, e,f])}
+
+  function resizeBRSquare([dx,dy]) {
+    let [a,b,c,d,e,f] = model.get("transform");
+    model.set("transform", [a+dx,b, c,a+dx, e,f])}
+
+  function resizeBRDispatch([dx,dy], evt) {// If "Shift" is pressed, preserve w/h ratio
+    if (evt && evt.shiftKey) {resizeBRSquare([dx,dy])}
+    else {resizeBR([dx,dy])}}
+
+  function resizeR([dx, dy]) {resizeBR([dx, 0])}
+  function resizeB([dx, dy]) {resizeBR([0, dy])}
+
+  function move([dx, dy]) {
+    // Movement is calculated from offset, so panning doesn't matter, but zoom does
+    let [a,b,c,d,e,f] = model.get("transform");
+    model.set("transform", [a,b,c,d, e+dx, f+dy]);}
+
+  // This flag is for serialization
+  let inactive = true;
+  function getInactive() {return inactive}
+
+  this.register = () => {// DOM business
+    this.inactive = false;
+    // We add the view to the DOM
+    shapeLayer.appendChild(shape);
+    controlLayer.appendChild(controls);
+    boxLayer.appendChild(box);
+    // Register this shape to the app
+    shapeList.push(this);
+    // Add to the undo stack
+    issueCmd({action: "create", shape: this});}
+
+  this.deregister = () => {
+    // remove from DOM, the shape's still around for undo/redo
+    this.inactive = true;
+    shapeLayer.removeChild(shape);
+    controlLayer.removeChild(controls);
+    boxLayer.removeChild(box);
+    // Add to the undo stack
+    issueCmd({action: "remove", shape: this})}
+  // Technically this returns only the copy of the model
+  this.getModel = () => model.getAll()}
 
 {// The DOM
   let lGrid = es("pattern", {id:"largeGrid",
@@ -210,36 +252,51 @@ function surfaceOnMouseMove(evt) {
 
   let app = document.getElementById("app");
   // The three SVG Layers
-  let shapes = es("g", {id:"shapes"});
-  let controls = es("g", {id:"controls"});
-  let boxes = es("g", {id:"boxes"});
+  shapeLayer = es("g", {id:"shapes"});
+  controlLayer = es("g", {id:"controls"});
+  boxLayer = es("g", {id:"boxes"});
   // The whole diagram
+  function surfaceOnMouseMove(evt) {
+    if (mouseDown && moveFn) {// If dragging, and there's an active listener
+      evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
+      let [x0,y0] = mouseDown;
+      // Update the mouse position for future dragging
+      let z = panZoom.getZoom();
+      let [x,y] = [evt.clientX/z, evt.clientY/z];
+      mouseDown = [x,y];
+      moveFn([x-x0, y-y0], evt);}}
+
   let svg_el = es("svg", {id:"svg", width:W, height:H, fill:"black"},
                   // pan-zoom wrapper wrap around here
                   [es("g", {id:"surface",
                             onMouseMove: surfaceOnMouseMove,
-                            onMouseUp: ((evt) => {mouseDown = null}),
-                            onMouseDown: ((evt) => {if (this.focused) {
-                              this.focused.unfocus()}})},
+                            onMouseUp: (evt) => {mouseDown = null},
+                            onMouseDown: (evt) => {if (focused)
+                                                   {focused.unfocus();
+                                                    focused = null;}}},
                       [es("defs", {id:"defs"}, [lGrid]),
                        es("rect", {id:"grid", width:W, height: H,
                                    fill: "url(#largeGrid)"}),
                        // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
-                       shapes, boxes, controls])]);
+                       shapeLayer, boxLayer, controlLayer])]);
 
   let UI = e("div", {id:"UI"},
              [// Shape creation
-               e("button", {onClick: (evt) => {new Shape2D(rectModel).register()}},
+               e("button", {onClick: (evt) => {new Shape2D(rectMold).register()}},
                  [et("Rectangle")]),
 
-               e("button", {onClick: (evt) => {new Shape2D(circModel).register()}},
+               e("button", {onClick: (evt) => {new Shape2D(circMold).register()}},
                  [et("Circle")]),
 
-               // Button
-               e("button", {onClick: (evt) => saveDiagram()},
+               // Save to file
+               e("button", {onClick:(evt) => saveDiagram()},
                  [et("Save")]),
-               e("input", {type:"file", accept:".json",
-                           onChange: readSingleFile})
+               // Load from file
+               e("button", {onClick:(evt) => triggerUpload()},
+                 [et("Load")]),
+
+               // Undo/Redo buttons
+               undoBtn, redoBtn
              ]);
   app.appendChild(UI);
   app.appendChild(svg_el);
@@ -247,8 +304,9 @@ function surfaceOnMouseMove(evt) {
   panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
 // @TodoList
-// @Bug: when dragging over another shape, the highlight is lost
+// Attempt to make lines
+// Undo/Redo
 // We definitely need the other resize controls
-// Save & restore is of highest priority
 // Add "send-to-front/back"
 // Change viewport size depending on the device
+// Is it better to force square when "shift" is down, rather than preserving ratio?
