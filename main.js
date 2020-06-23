@@ -28,22 +28,23 @@ function updateUndoUI() {
   redoBtn.disabled = !canRedo();}
 
 // Save the command to the undo stack
+var controlChanged = true;
 function issueCmd(cmd) {
   let len = undoStack.length;
   // So the deal is this: if the edit continuously comes from the same source, then we view that as the same edit
   if (len != 0) {
     let last = undoStack[len-1];
-    if (cmd.action == "edit" &&
-        last.action == "edit" &&
-        cmd.shape == last.shape &&
-        cmd.controller == last.controller) {
-      last.after = cmd.after;}
+    if (controlChanged) {
+      undoStack.push(cmd);
+      controlChanged = false;}
+    else if (cmd.action == "edit") {last.after = cmd.after}
     else {undoStack.push(cmd)}}
   else {undoStack.push(cmd)}
   redoStack.length = 0;  // Empty out the redoStack
   updateUndoUI();}
 
 function undo() {
+  moveFn = null;  // We cannot extend undo/redo
   let cmd = undoStack.pop();
   switch (cmd.action) {
   case "create":
@@ -62,6 +63,7 @@ function undo() {
   updateUndoUI();}
 
 function redo() {
+  moveFn = null;  // We cannot extend undo/redo
   let cmd = redoStack.pop();
   switch (cmd.action) {
   case "create":
@@ -230,6 +232,7 @@ function Shape2D(mold) {
   function ctrOnMouseDown (msg) {
     // Returns an event handler
     return (evt) => {
+      controlChanged = true;  // Switched to a new control
       evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
       mouseDown = svgCoor([evt.clientX, evt.clientY]);
       // User clicked, transfer focus to the receiving element
@@ -329,7 +332,10 @@ function Shape2D(mold) {
                   [es("g", {id:"surface",
                             onMouseMove: surfaceOnMouseMove,
                             onMouseUp: (evt) => {mouseDown = null},
-                            onMouseDown: (evt) => {if (focused) {focused.unfocus()}
+                            onMouseDown: (evt) => {if (focused)
+                                                   {focused.unfocus();
+                                                    moveFn = null;
+                                                    controlChanged = true;}
                                                    mouseDown = svgCoor([evt.x,evt.y]);}},
                       [es("defs", {id:"defs"}, [lGrid]),
                        es("rect", {id:"grid", width:W, height: H,
@@ -361,8 +367,8 @@ function Shape2D(mold) {
   panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
 // @TodoList
-// Attempt to make lines
-// Undo/Redo
+// @Bug: If a focused shape gets deleted, then recreated via undo/redo, its moveFn is still there
+// Add lines!
 // We definitely need the other resize controls
 // Add "send-to-front/back"
 // Change viewport size depending on the device
