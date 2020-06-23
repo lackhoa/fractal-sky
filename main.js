@@ -19,23 +19,41 @@ let undoStack = [];
 let redoStack = [];
 function canUndo() {return (undoStack.length != 0)};
 function canRedo() {return (redoStack.length != 0)};
-function tryUndo() {if (canUndo()) {undo()} else {log("Cannot undo!")}}
-function tryRedo() {if (canRedo()) {redo()} else {log("Cannot redo!")}}
+
 let undoBtn = e("button", {onClick:undo, disabled:true}, [et("Undo")]);
 let redoBtn = e("button", {onClick:redo, disabled:true}, [et("Redo")]);
 function updateUndoUI() {
   undoBtn.disabled = !canUndo();
   redoBtn.disabled = !canRedo();}
 
+// Save the command to the undo stack
+function issueCmd(cmd) {
+  let len = undoStack.length;
+  // So the deal is this: if the edit continuously comes from the same source, then we view that as the same edit
+  if (len != 0) {
+    let last = undoStack[len-1];
+    if (cmd.action == "edit" &&
+        last.action == "edit" &&
+        cmd.shape == last.shape &&
+        cmd.controller == last.controller) {
+      last.after = cmd.after;}
+    else {undoStack.push(cmd)}}
+  else {undoStack.push(cmd)}
+  redoStack.length = 0;  // Empty out the redoStack
+  updateUndoUI();}
+
 function undo() {
   let cmd = undoStack.pop();
   switch (cmd.action) {
   case "create":
-    log("I'm gonna remove!"); break;
+    cmd.shape.deregister(false);  // The shape is still there, just register it
+    break;
   case "remove":
-    log("I'm gonna create!"); break
+    cmd.shape.reregister();
+    break;
   case "edit":
-    log("I'm gonna undo edit!"); break;
+    cmd.shape.setAttr(cmd.attr, cmd.before);
+    break;
   default:
     throw("Illegal action", cmd.action)}
   redoStack.push(cmd);
@@ -46,16 +64,22 @@ function redo() {
   let cmd = redoStack.pop();
   switch (cmd.action) {
   case "create":
-    log("I'm gonna create!"); break;
+    cmd.shape.reregister();  // The shape is still there, just register it
+    break;
   case "remove":
-    log("I'm gonna remove!"); break
+    cmd.shape.deregister(false);
+    break;
   case "edit":
-    log("I'm gonna redo edit!"); break;
+    cmd.shape.setAttr(cmd.attr, cmd.after);
+    break;
   default:
     throw("Illegal action", cmd.action)}
   undoStack.push(cmd);
   log({undo: undoStack, redo: redoStack});
   updateUndoUI();}
+
+function tryUndo() {if (canUndo()) {undo()} else {log("Cannot undo!")}}
+function tryRedo() {if (canRedo()) {redo()} else {log("Cannot redo!")}}
 
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
@@ -92,12 +116,6 @@ let cornerMold = {...commonMold, tag:"rect", width:0.1, height:0.1, fill:"red"};
 // Adding a shape from a model
 let DEFAULT_SCALE = 100;
 
-// Save the command to the undo stack
-function issueCmd(cmd) {
-  undoStack.push(cmd);
-  redoStack.length = 0;  // Empty out the redoStack
-  updateUndoUI();}
-
 function LockedObj(init, updateFn) {
   // Guarantees no mutation without
   var val = {};
@@ -112,8 +130,11 @@ function LockedObj(init, updateFn) {
 
 function serialize(shape) {return shape.getModel()}
 
-// Function that abstracts many drag events handled by shape controllers
-function Shape2D(mold={}) {
+function svgCoor([x,y]) {
+  let z = panZoom.getZoom();
+  return [x/z, y/z];}
+
+function Shape2D(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
   // Optionally pass in `data` for serialization purpose
@@ -161,35 +182,56 @@ function Shape2D(mold={}) {
                 onMouseDown: ctrOnMouseDown(resizeBRDispatch)})]);
   function focus() {
     highlight();
-    setAttr(controls, {visibility: "visible"})}
-
-  let model = new LockedObj(
-    moldCopy,
-    (k,_,v) => {
-      // Update the associated element
+    setAttr(controls, {visibility: "visible"});
+    focused = that;}
+  function modelCtor() {
+    // Guarantees no mutation without
+    var val = {};
+    let updateFn = (k,v0,v) => {
       setAttr(shape, {[k]: v});
       if (k == "transform") {
         // transform is applied to all associated DOM groups
         setAttr(box, {transform: v});
-        setAttr(controls, {transform: v});}});
+        setAttr(controls, {transform: v});}}
+    this.set = (k,newVal) => {
+      updateFn(k,val,newVal);
+      val[k] = newVal;};
+    this.get = (k) => val[k];
+    // Only returns copies: no mutation allowed!
+    this.getAll = () => {return {...val}};
+    for (let [k,v] of Object.entries(moldCopy)) {
+      this.set(k, v)}
+  }
+  let model = new modelCtor();
+
+  // What the fuck: "model.set" will change the prototype?
+  // Setting model allows undo as well (init code doesn't need undoing)
+  let oldSet = model.set.bind(model);
+  model.set = (k,v, controller=null) => {
+    let oldV = model.get(k);
+    oldSet(k,v);  // Update the value as usual
+    // If the controller is non-null, it means that this is an undoable command
+    if (controller) {
+      issueCmd({action:"edit", shape:that, controller:controller,
+                attr:k, before:oldV, after:v})}
+  };
 
   function unfocus() {
     unhighlight();
-    setAttr(controls, {visibility: "hidden"})}
-  this.unfocus = unfocus.bind(this);
+    setAttr(controls, {visibility: "hidden"});
+    focused = null;}
+  that.unfocus = unfocus.bind(that);
 
   // Abstraction on mouse event handlers
   function ctrOnMouseDown (msg) {
     // Returns an event handler
     return (evt) => {
       evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
-      let z = panZoom.getZoom();
-      mouseDown = [evt.clientX/z, evt.clientY/z];
+      mouseDown = svgCoor([evt.clientX, evt.clientY]);
       // User clicked, transfer focus to the receiving element
       if (focused != that) {
         if (focused) {focused.unfocus()}
-        focus();
-        focused = that;}
+        focus();}
       // The same shape might have different "controllers", so we bind the moveFn regardless
       moveFn = msg.bind(that);}}
 
@@ -199,11 +241,11 @@ function Shape2D(mold={}) {
   function resizeBR([dx,dy]) {// [dx, dy] is offset given in svg coordinate
     // Moves the bottom-right corner
     let [a,b,c,d,e,f] = model.get("transform");
-    model.set("transform", [a+dx,b, c,d+dy, e,f])}
+    model.set("transform", [a+dx,b, c,d+dy, e,f], "resizeBR")}
 
   function resizeBRSquare([dx,dy]) {
     let [a,b,c,d,e,f] = model.get("transform");
-    model.set("transform", [a+dx,b, c,a+dx, e,f])}
+    model.set("transform", [a+dx,b, c,a+dx, e,f], "resizeBR")}
 
   function resizeBRDispatch([dx,dy], evt) {// If "Shift" is pressed, preserve w/h ratio
     if (evt && evt.shiftKey) {resizeBRSquare([dx,dy])}
@@ -215,33 +257,45 @@ function Shape2D(mold={}) {
   function move([dx, dy]) {
     // Movement is calculated from offset, so panning doesn't matter, but zoom does
     let [a,b,c,d,e,f] = model.get("transform");
-    model.set("transform", [a,b,c,d, e+dx, f+dy]);}
+    model.set("transform", [a,b,c,d, e+dx, f+dy], "move");}
 
   // This flag is for serialization
-  let inactive = true;
+  var inactive = true;
   function getInactive() {return inactive}
 
-  this.register = () => {// DOM business
-    this.inactive = false;
+  reregister = () => {// Like "register", but issued by undo/redo
+    inactive = false;
     // We add the view to the DOM
     shapeLayer.appendChild(shape);
     controlLayer.appendChild(controls);
-    boxLayer.appendChild(box);
-    // Register this shape to the app
-    shapeList.push(this);
-    // Add to the undo stack
-    issueCmd({action: "create", shape: this});}
+    boxLayer.appendChild(box);}
+  that.reregister = reregister.bind(that);
 
-  this.deregister = () => {
+  register = () => {
+    reregister()
+    // Add to the undo stack
+    issueCmd({action: "create", shape: that})}
+  shapeList.push(that);
+  that.register = register.bind(that);
+
+  deregister = (doesIssue=true) => {
     // remove from DOM, the shape's still around for undo/redo
-    this.inactive = true;
+    unfocus();
+    inactive = true;
     shapeLayer.removeChild(shape);
     controlLayer.removeChild(controls);
     boxLayer.removeChild(box);
-    // Add to the undo stack
-    issueCmd({action: "remove", shape: this})}
+    if (doesIssue) {
+      // Add to the undo stack
+      issueCmd({action: "remove", shape: that})}}
+  that.deregister = deregister.bind(that);
+
   // Technically this returns only the copy of the model
-  this.getModel = () => model.getAll()}
+  that.getModel = () => model.getAll();
+
+  // Emergency hole to undo/redo attribute
+  that.setAttr = (attr,val) => {
+    model.set(attr,val)}}
 
 {// The DOM
   let lGrid = es("pattern", {id:"largeGrid",
@@ -271,9 +325,8 @@ function Shape2D(mold={}) {
                   [es("g", {id:"surface",
                             onMouseMove: surfaceOnMouseMove,
                             onMouseUp: (evt) => {mouseDown = null},
-                            onMouseDown: (evt) => {if (focused)
-                                                   {focused.unfocus();
-                                                    focused = null;}}},
+                            onMouseDown: (evt) => {if (focused) {focused.unfocus()}
+                                                   mouseDown = svgCoor([evt.x,evt.y]);}},
                       [es("defs", {id:"defs"}, [lGrid]),
                        es("rect", {id:"grid", width:W, height: H,
                                    fill: "url(#largeGrid)"}),

@@ -10,7 +10,8 @@ function loadComplete(evt) {// Note: currently can only load 2D shapes
                           sg.register();});
   // We will not allow undoing save-load for now (I mean when would you need that?)
   undoStack.length = 0;
-  redoStack.length = 0;}
+  redoStack.length = 0;
+  updateUndoUI();}
 
 // Event listener for when the user uploaded a file
 function readSingleFile(evt) {
