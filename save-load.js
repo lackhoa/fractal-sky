@@ -6,7 +6,7 @@ function triggerUpload(evt) {fileInput.click()}
 function loadComplete(evt) {// Note: currently can only load 2D shapes
   let contents = JSON.parse(evt.target.result);
   clearSvg();
-  contents.map((mold) => {let sg = new Shape2D(mold);
+  contents.map((mold) => {let sg = new Shape(mold);
                           sg.register();});
   // We will not allow undoing save-load for now (I mean when would you need that?)
   undoStack.length = 0;

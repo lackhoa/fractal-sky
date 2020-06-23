@@ -110,26 +110,12 @@ let commonMold = {fill:"transparent", stroke:"black",
                   "vector-effect": "non-scaling-stroke"};
 let rectMold = {...commonMold, tag:"rect", width:1, height:1};
 let circMold = {...commonMold, tag:"circle", cx:0.5, cy:0.5, r:0.5};
-let lineMold = {...commonMold, tag: "line", x1:0, y1:0, x2:1, y2:1};
+let lineMold = {...commonMold, tag: "line"};
+let thickLineMold = {...lineMold, "stroke-width":10, stroke:"#0000FF55"};
 
 let frameMold = {...commonMold, tag:"rect",
                  width:1, height:1, cursor:"move", fill:"#0000FF55",};
 let cornerMold = {...commonMold, tag:"rect", width:0.1, height:0.1, fill:"red"};
-
-// Adding a shape from a model
-let DEFAULT_SCALE = 100;
-
-function LockedObj(init, updateFn) {
-  // Guarantees no mutation without
-  var val = {};
-  this.set = (k,newVal) => {
-    updateFn(k,val,newVal);
-    val[k] = newVal;};
-  this.get = (k) => val[k];
-  // Only returns copies: no mutation allowed!
-  this.getAll = () => {return {...val}};
-  for (let [k,v] of Object.entries(init)) {
-    this.set(k, v)}}
 
 function serialize(shape) {return shape.getModel()}
 
@@ -140,30 +126,44 @@ function svgCoor([x,y]) {
 var shapeLayer;
 var controlLayer;
 var boxLayer;
-function Shape2D(mold) {
+function Shape(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
   // Optionally pass in `data` for serialization purpose
   let that = this;  // Weird trick to make "this" work in private function
-  let moldCopy = {...mold};
-
   // Calculating spawn location
-  if (!moldCopy.transform) {
-    let {x,y} = panZoom.getPan();
-    let z = panZoom.getZoom();
-    let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
+  let {tag, ...attrs} = {...mold};
+  let {x,y} = panZoom.getPan();
+  let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
+  let z = panZoom.getZoom();
+  if (tag == "line") {
+    if (!attrs.x1) {
+      [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [rx, ry, rx+100, ry+100]}}
+  else if (!attrs.transform) {
     // panZoom's transform is: array V ➾ P(V) = zV+Δ (where Δ = [x,y])
     // Substituting (V - Δ/z) for V skews that result to just be zV
-    moldCopy.transform = [DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
-                          (-x+rx)/z, (-y+ry)/z]}
+    let DEFAULT_SCALE = 100;
+    attrs.transform = [DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
+                       (-x+rx)/z, (-y+ry)/z]}
 
-  let {tag, ...attrs} = {...moldCopy};
   let shape = es(tag, attrs);
 
+  var move;
+  if (tag == "line") {
+    move = ([dx, dy]) => {
+      let {x1,y1,x2,y2} = model.getAll();
+      model.set("x1", x1+dx); model.set("y1", y1+dy);
+      model.set("x2", x2+dx); model.set("y2", y2+dy);}}
+  else {
+    move = ([dx, dy]) => {
+      let [a,b,c,d,e,f] = model.get("transform");
+      model.set("transform", [a,b,c,d, e+dx, f+dy], "move");}}
+
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
+  var boxMold = (tag == "line") ? thickLineMold : frameMold;
   let box = es(
-    frameMold.tag,
-    {...frameMold, visibility: "hidden",
+    boxMold.tag,
+    {...boxMold, visibility: "hidden",
      // Allways handle mouse event, visible or not
      "pointer-events": "all",
      onMouseEnter: () => {if (!mouseDown) {highlight()}},
@@ -172,55 +172,98 @@ function Shape2D(mold) {
      onMouseDown: ctrOnMouseDown(move)});
 
   let ctag = cornerMold.tag;
-  let controls = es(
-    "g", {visibility: "hidden",},
-    [// Horizontal resizing (right-side)
-      es(ctag, {...cornerMold, x:0.9, y:0.45,
-                cursor:"e-resize",
-                onMouseDown: ctrOnMouseDown(resizeR)}),
-      // Vertical resizing (bottom-side)
-      es(ctag, {...cornerMold, x:0.45, y:0.9,
-                cursor:"s-resize",
-                onMouseDown: ctrOnMouseDown(resizeB)}),
-      // Bottom-right corner
-      es(ctag, {...cornerMold, x:0.9, y:0.9,
-                cursor:"se-resize",
-                onMouseDown: ctrOnMouseDown(resizeBRDispatch)})]);
+  var controls;
+  if (tag == "line") {
+    let endpoint1Md = ([dx,dy]) => {
+      let {x1,y1} = model.getAll();
+      model.set("x1", x1+dx); model.set("y1", y1+dy);}
+    let endpoint2Md = ([dx,dy]) => {
+      let {x2,y2} = model.getAll();
+      model.set("x2", x2+dx); model.set("y2", y2+dy);}
+    var endpoint1 = es(ctag, {...cornerMold, width:10, height:10,
+                              onMouseDown:ctrOnMouseDown(endpoint1Md)});
+    var endpoint2 = es(ctag, {...cornerMold, width:10, height:10,
+                              onMouseDown:ctrOnMouseDown(endpoint2Md)});
+    controls = es("g", {visibility: "hidden"},
+                  [endpoint1, endpoint2]);}
+  else {
+    function resizeBR([dx,dy]) {// [dx, dy] is offset given in svg coordinate
+      // Moves the bottom-right corner
+      let [a,b,c,d,e,f] = model.get("transform");
+      model.set("transform", [a+dx,b, c,d+dy, e,f], "resizeBR")}
+
+    function resizeBRSquare([dx,dy]) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      model.set("transform", [a+dx,b, c,a+dx, e,f], "resizeBR")}
+
+    function resizeBRDispatch([dx,dy], evt) {// If "Shift" is pressed, preserve w/h ratio
+      if (evt && evt.shiftKey) {resizeBRSquare([dx,dy])}
+      else {resizeBR([dx,dy])}}
+
+    function resizeR([dx, dy]) {resizeBR([dx, 0])}
+    function resizeB([dx, dy]) {resizeBR([0, dy])}
+    controls = es(
+      "g", {visibility: "hidden",},
+      [// Horizontal resizing (right-side)
+        es(ctag, {...cornerMold, x:0.9, y:0.45,
+                  cursor:"e-resize",
+                  onMouseDown: ctrOnMouseDown(resizeR)}),
+        // Vertical resizing (bottom-side)
+        es(ctag, {...cornerMold, x:0.45, y:0.9,
+                  cursor:"s-resize",
+                  onMouseDown: ctrOnMouseDown(resizeB)}),
+        // Bottom-right corner
+        es(ctag, {...cornerMold, x:0.9, y:0.9,
+                  cursor:"se-resize",
+                  onMouseDown: ctrOnMouseDown(resizeBRDispatch)})]);}
+
   function focus() {
     highlight();
     setAttr(controls, {visibility: "visible"});
     focused = that;}
+
   function modelCtor() {
-    // Guarantees no mutation without
+    // Guarantees no mutation without going through updateFn
     var val = {};
-    let updateFn = (k,v0,v) => {
-      setAttr(shape, {[k]: v});
-      if (k == "transform") {
+    this.set = (k,newVal, controller=null) => {
+      setAttr(shape, {[k]: newVal});
+      if (tag == "line") {
+        if (["x1", "y1", "x2", "y2"].includes(k)) {
+          // Changing the endpoints of the model also changes box
+          setAttr(box, {[k]: newVal});
+          // Then we change the nobs, too!
+          switch (k) {
+          case "x1":
+            setAttr(endpoint1, {x: newVal});
+            break;
+          case "y1":
+            setAttr(endpoint1, {y: newVal});
+            break;
+          case "x2":
+            setAttr(endpoint2, {x: newVal});
+            break;
+          case "y2":
+            setAttr(endpoint2, {y: newVal});
+            break;
+          default: break;}}}
+      else if (k == "transform") {
         // transform is applied to all associated DOM groups
-        setAttr(box, {transform: v});
-        setAttr(controls, {transform: v});}}
-    this.set = (k,newVal) => {
-      updateFn(k,val,newVal);
-      val[k] = newVal;};
+        setAttr(box, {transform: newVal});
+        setAttr(controls, {transform: newVal});}
+      // If the controller is non-null, it means that this is an undoable command
+      if (controller) {
+        issueCmd({action:"edit", shape:that, attr:k, before:val[k], after:newVal})}
+      val[k] = newVal;}
+
     this.get = (k) => val[k];
     // Only returns copies: no mutation allowed!
     this.getAll = () => {return {...val}};
-    for (let [k,v] of Object.entries(moldCopy)) {
-      this.set(k, v)}
-  }
-  let model = new modelCtor();
 
-  // What the fuck: "model.set" will change the prototype?
-  // Setting model allows undo as well (init code doesn't need undoing)
-  let oldSet = model.set.bind(model);
-  model.set = (k,v, controller=null) => {
-    let oldV = model.get(k);
-    oldSet(k,v);  // Update the value as usual
-    // If the controller is non-null, it means that this is an undoable command
-    if (controller) {
-      issueCmd({action:"edit", shape:that, controller:controller,
-                attr:k, before:oldV, after:v})}
-  };
+    // Then we initialize the model, also mutating the DOM to match
+    for (let [k,v] of Object.entries(attrs)) {
+      this.set(k, v)}}
+
+  let model = new modelCtor();
 
   function unfocus() {
     unhighlight();
@@ -244,27 +287,6 @@ function Shape2D(mold) {
 
   function highlight() {setAttr(box, {visibility: "visible"})}
   function unhighlight() {setAttr(box, {visibility: "hidden"})}
-
-  function resizeBR([dx,dy]) {// [dx, dy] is offset given in svg coordinate
-    // Moves the bottom-right corner
-    let [a,b,c,d,e,f] = model.get("transform");
-    model.set("transform", [a+dx,b, c,d+dy, e,f], "resizeBR")}
-
-  function resizeBRSquare([dx,dy]) {
-    let [a,b,c,d,e,f] = model.get("transform");
-    model.set("transform", [a+dx,b, c,a+dx, e,f], "resizeBR")}
-
-  function resizeBRDispatch([dx,dy], evt) {// If "Shift" is pressed, preserve w/h ratio
-    if (evt && evt.shiftKey) {resizeBRSquare([dx,dy])}
-    else {resizeBR([dx,dy])}}
-
-  function resizeR([dx, dy]) {resizeBR([dx, 0])}
-  function resizeB([dx, dy]) {resizeBR([0, dy])}
-
-  function move([dx, dy]) {
-    // Movement is calculated from offset, so panning doesn't matter, but zoom does
-    let [a,b,c,d,e,f] = model.get("transform");
-    model.set("transform", [a,b,c,d, e+dx, f+dy], "move");}
 
   // This flag is for serialization
   var inactive = true;
@@ -301,8 +323,7 @@ function Shape2D(mold) {
   that.getModel = () => model.getAll();
 
   // Emergency hole to undo/redo attribute
-  that.setAttr = (attr,val) => {
-    model.set(attr,val)}}
+  that.setAttr = (attr,val) => {model.set(attr,val)}}
 
 {// The DOM
   let lGrid = es("pattern", {id:"largeGrid",
@@ -345,11 +366,12 @@ function Shape2D(mold) {
 
   let UI = e("div", {id:"UI"},
              [// Shape creation
-               e("button", {onClick: (evt) => {new Shape2D(rectMold).register()}},
+               e("button", {onClick: (evt) => {new Shape(rectMold).register()}},
                  [et("Rectangle")]),
-
-               e("button", {onClick: (evt) => {new Shape2D(circMold).register()}},
+               e("button", {onClick: (evt) => {new Shape(circMold).register()}},
                  [et("Circle")]),
+               e("button", {onClick: (evt) => {new Shape(lineMold).register()}},
+                 [et("Line")]),
 
                // Save to file
                e("button", {onClick:(evt) => saveDiagram()},
