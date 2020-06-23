@@ -6,8 +6,8 @@ function triggerUpload(evt) {fileInput.click()}
 function loadComplete(evt) {// Note: currently can only load 2D shapes
   let contents = JSON.parse(evt.target.result);
   clearSvg();
-  contents.map((mold) => {let sg = new Shape(mold);
-                          sg.register();});
+  log(contents);
+  contents.map((mold) => {new Shape(mold).register()});
   // We will not allow undoing save-load for now (I mean when would you need that?)
   undoStack.length = 0;
   redoStack.length = 0;
@@ -28,9 +28,10 @@ function removeChildren(node) {
 function clearSvg() {
   removeChildren(shapes);
   removeChildren(boxes);
-  removeChildren(controls);}
+  removeChildren(controls);
+  shapeList.length = 0;}
 
 function saveDiagram() {
-  let json = shapeList.filter((s) => !s.inactive).map((s) => serialize(s));
+  let json = shapeList.filter((s) => s.getActive()).map((s) => serialize(s));
   let blob = new Blob([JSON.stringify(json)], { "type": "text/json" });
   saveAs(blob, "diagram.json");}

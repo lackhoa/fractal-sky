@@ -7,7 +7,6 @@ var focused = null;  // The focused shape
 var moveFn = null;  // Movement listener
 let shapeList = [];  // Keep track of all added shapes (including the ones removed)
 
-'use strict';
 let log = console.log;
 let [W, H] = [801, 481];
 
@@ -20,9 +19,11 @@ let undoStack = [];
 let redoStack = [];
 function canUndo() {return (undoStack.length != 0)};
 function canRedo() {return (redoStack.length != 0)};
+function tryUndo() {if (canUndo()) {undo()} else {log("Cannot undo!")}}
+function tryRedo() {if (canRedo()) {redo()} else {log("Cannot redo!")}}
 
-let undoBtn = e("button", {onClick:undo, disabled:true}, [et("Undo")]);
-let redoBtn = e("button", {onClick:redo, disabled:true}, [et("Redo")]);
+let undoBtn = e("button", {onClick:tryUndo, disabled:true}, [et("Undo")]);
+let redoBtn = e("button", {onClick:tryRedo, disabled:true}, [et("Redo")]);
 function updateUndoUI() {
   undoBtn.disabled = !canUndo();
   redoBtn.disabled = !canRedo();}
@@ -81,19 +82,23 @@ function redo() {
   log({undo: undoStack, redo: redoStack});
   updateUndoUI();}
 
-function tryUndo() {if (canUndo()) {undo()} else {log("Cannot undo!")}}
-function tryRedo() {if (canRedo()) {redo()} else {log("Cannot redo!")}}
-
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
-              "ctrl-y": tryRedo,}
+              "ctrl-y": tryRedo,
+              "ArrowRight": () => {if (moveFn) {moveFn([10,0])}},
+              "ArrowUp": () => {if (moveFn) {moveFn([0,-10])}},
+              "ArrowDown": () => {if (moveFn) {moveFn([0,10])}},
+              "ArrowLeft": () => {if (moveFn) {moveFn([-10,0])}},
+              "Delete": () => {if (focused) {focused.deregister()}},}
 window.onkeydown = (evt) => {
   let keys = [];
   if (evt.ctrlKey) {keys.push("ctrl")}
   if (evt.shiftKey) {keys.push("shift")}
   keys.push(evt.key);
   let lookup = keymap[keys.join("-")];
-  if (lookup) {lookup()};}
+  if (lookup) {
+    evt.preventDefault();// Arrow keys scroll the window, we don't want that
+    lookup()};}
 
 function translate(model, tx, ty) {
   let [a,b,c,d,e,f] = model.transform || [1,0,0,1,0,0];
@@ -260,7 +265,7 @@ function Shape(mold) {
     this.getAll = () => {return {...val}};
 
     // Then we initialize the model, also mutating the DOM to match
-    for (let [k,v] of Object.entries(attrs)) {
+    for (let [k,v] of Object.entries({ tag:tag, ...attrs})) {
       this.set(k, v)}}
 
   let model = new modelCtor();
@@ -289,11 +294,11 @@ function Shape(mold) {
   function unhighlight() {setAttr(box, {visibility: "hidden"})}
 
   // This flag is for serialization
-  var inactive = true;
-  function getInactive() {return inactive}
+  var active = false;
+  that.getActive = () => active;
 
   let reregister = () => {// Like "register", but issued by undo/redo
-    inactive = false;
+    active = true;
     // We add the view to the DOM
     shapeLayer.appendChild(shape);
     controlLayer.appendChild(controls);
@@ -310,7 +315,7 @@ function Shape(mold) {
   let deregister = (doesIssue=true) => {
     // remove from DOM, the shape's still around for undo/redo
     unfocus();
-    inactive = true;
+    active = false;
     shapeLayer.removeChild(shape);
     controlLayer.removeChild(controls);
     boxLayer.removeChild(box);
@@ -352,11 +357,11 @@ function Shape(mold) {
                   // pan-zoom wrapper wrap around here
                   [es("g", {id:"surface",
                             onMouseMove: surfaceOnMouseMove,
-                            onMouseUp: (evt) => {mouseDown = null},
+                            onMouseUp: (evt) => {mouseDown = null;
+                                                 controlChanged = true;},
                             onMouseDown: (evt) => {if (focused)
                                                    {focused.unfocus();
-                                                    moveFn = null;
-                                                    controlChanged = true;}
+                                                    moveFn = null;}
                                                    mouseDown = svgCoor([evt.x,evt.y]);}},
                       [es("defs", {id:"defs"}, [lGrid]),
                        es("rect", {id:"grid", width:W, height: H,
@@ -389,9 +394,7 @@ function Shape(mold) {
   panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
 // @TodoList
-// @Bug: If a focused shape gets deleted, then recreated via undo/redo, its moveFn is still there
-// Add lines!
-// We definitely need the other resize controls
+// Add the other box resize controls
 // Add "send-to-front/back"
 // Change viewport size depending on the device
-// Is it better to force square when "shift" is down, rather than preserving ratio?
+// Change properties like stroke, stroke-width and fill
