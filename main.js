@@ -1,3 +1,4 @@
+"use strict";
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
 var panZoom = null;  // A third-party svg pan-zoom thing
@@ -134,6 +135,9 @@ function svgCoor([x,y]) {
   let z = panZoom.getZoom();
   return [x/z, y/z];}
 
+var shapeLayer;
+var controlLayer;
+var boxLayer;
 function Shape2D(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
@@ -263,7 +267,7 @@ function Shape2D(mold) {
   var inactive = true;
   function getInactive() {return inactive}
 
-  reregister = () => {// Like "register", but issued by undo/redo
+  let reregister = () => {// Like "register", but issued by undo/redo
     inactive = false;
     // We add the view to the DOM
     shapeLayer.appendChild(shape);
@@ -271,14 +275,14 @@ function Shape2D(mold) {
     boxLayer.appendChild(box);}
   that.reregister = reregister.bind(that);
 
-  register = () => {
+  let register = () => {
     reregister()
     // Add to the undo stack
     issueCmd({action: "create", shape: that})}
   shapeList.push(that);
   that.register = register.bind(that);
 
-  deregister = (doesIssue=true) => {
+  let deregister = (doesIssue=true) => {
     // remove from DOM, the shape's still around for undo/redo
     unfocus();
     inactive = true;
