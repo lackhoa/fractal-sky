@@ -86,9 +86,10 @@ function State() {
 
   function focus(shape) {
     // Shape can be null
-    if (focused) focused.unfocus()
-    focused = shape;
-    if (shape) shape.focus();}
+    if (focused != shape) {
+      if (focused) focused.unfocus()
+      focused = shape;
+      if (shape) shape.focus();}}
   that.focus = focus;
 
   // Make sure a shape isn't focused
@@ -97,17 +98,17 @@ function State() {
 
 let state = new State();
 
-function move(offset, evt) {
+function issueMove(offset, evt) {
   let focused = state.getFocused();
   if (focused) focused.respondToMove(offset, evt);}
 
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
               "ctrl-y": tryRedo,
-              "ArrowRight": () => move([10,0]),
-              "ArrowUp": () => move([0,-10]),
-              "ArrowDown": () => move([0,10]),
-              "ArrowLeft": () => move([-10,0]),
+              "ArrowRight": () => issueMove([10,0]),
+              "ArrowUp": () => issueMove([0,-10]),
+              "ArrowDown": () => issueMove([0,10]),
+              "ArrowLeft": () => issueMove([-10,0]),
               "Delete": () => {
                 let focused = state.getFocused();
                 if (focused) {focused.deregister()}},}
@@ -121,14 +122,13 @@ window.onkeydown = (evt) => {
     evt.preventDefault();// Arrow keys scroll the window, we don't want that
     lookup()};}
 
-function translate(model, tx, ty) {
-  let [a,b,c,d,e,f] = model.transform || [1,0,0,1,0,0];
-  // Note that translation is scaled along with the transformation matrix
-  return {...model, transform: [a,b,c,d, e+tx, f+ty]};}
-
-function tslate(model, tx, ty) {// The mutable version
-  let [a,b,c,d,e,f] = model.transform || [1,0,0,1,0,0];
-  model.transform = [a,b,c,d, e+tx, f+ty];}
+// Some pure transformation functions
+function translate([a,b, c,d, e,f], [tx,ty]) {
+  return [a,b, c,d, e+tx, f+ty];}
+function extend([a,b, c,d, e,f], [dx,dy]) {
+  return [a+dx,b, c,d+dy, e,f]}
+function transform([a,b, c,d, e,f], [x,y]) {
+  return [ax+cx+e, bx+dx+f]}
 
 // These models define shape and their associated controls
 // Note: "tag" denotes the DOM element's tag, other attributes are consistent with my DOM model
@@ -154,6 +154,8 @@ function svgCoor([x,y]) {
 var shapeLayer;
 var controlLayer;
 var boxLayer;
+function update(obj, k, f) {obj.set(k, f(obj.get(k)))}
+
 function Shape(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
@@ -184,8 +186,7 @@ function Shape(mold) {
       model.set("x2", x2+dx); model.set("y2", y2+dy);}}
   else {
     move = ([dx, dy]) => {
-      let [a,b,c,d,e,f] = model.get("transform");
-      model.set("transform", [a,b,c,d, e+dx, f+dy], "move");}}
+      update(model, "transform", (m) => translate(m, [dx,dy]));}}
 
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
   var boxMold = (tag == "line") ? thickLineMold : frameMold;
@@ -230,18 +231,15 @@ function Shape(mold) {
     function resizeB([dx, dy]) {resizeBR([0, dy])}
 
     // The top-left resizers are pretty much translate and then use BR
-    function resizeTL([dx,dy]) {move([dx,dy]); resizeBR([-dx,-dy]);}
-
-    function resizeTLSquare([dx,dy]) {
-      move([dx,dx]);  // The scaling only depends on dx, so only move that dx
-      resizeBR([-dx,-dx])}
-
-    function resizeTLDispatch([dx,dy], evt) {
-      if (evt && evt.shiftKey) {resizeTLSquare([dx,dy])}
-      else {resizeTL([dx,dy])}}
-
-    function resizeL([dx, dy]) {resizeTL([dx, 0])}
-    function resizeT([dx, dy]) {resizeTL([0, dy])}
+    function resizeTL([dx,dy], evt) {
+      if (evt && evt.shiftKey) {
+        let D = (dx != 0) ? dx : dy;
+        update(model, "transform", (([a,b,c,d,e,f]) => [a-D,b, b,a-D, e+D,f+D]));}
+      else {
+        update(model, "transform", (m) => extend(translate(m, [dx,dy]),
+                                                 [-dx,-dy]))}}
+    function resizeL([dx, dy], evt) {resizeTL([dx, 0], evt)}
+    function resizeT([dx, dy], evt) {resizeTL([0, dy], evt)}
 
     controls = es(
       "g", {visibility: "hidden",},
@@ -260,7 +258,7 @@ function Shape(mold) {
         // Top-left corner
         es(ctag, {...cornerMold, x:0, y:0,
                   cursor:"nw-resize",
-                  onMouseDown: ctrOnMouseDown(resizeTLDispatch)}),
+                  onMouseDown: ctrOnMouseDown(resizeTL)}),
         // Left side
         es(ctag, {...cornerMold, x:0, y:0.45,
                   cursor:"w-resize",
@@ -278,170 +276,171 @@ function Shape(mold) {
 
   function modelCtor() {
     // Guarantees no mutation without going through updateFn
-    var val = {};
-    this.set = (k,newVal, controller=null) => {
-      setAttr(shape, {[k]: newVal});
-      if (tag == "line") {
-        if (["x1", "y1", "x2", "y2"].includes(k)) {
-          // Changing the endpoints of the model also changes box
-          setAttr(box, {[k]: newVal});
-          // Then we change the nobs, too!
-          switch (k) {
-          case "x1":
-            setAttr(endpoint1, {x: newVal-5}); break;
-          case "y1":
-            setAttr(endpoint1, {y: newVal-5}); break;
-          case "x2":
-            setAttr(endpoint2, {x: newVal-5}); break;
-          case "y2":
-            setAttr(endpoint2, {y: newVal-5}); break;}}}
-      else if (k == "transform") {
-        // transform is applied to all associated DOM groups
-        setAttr(box, {transform: newVal});
-        setAttr(controls, {transform: newVal});}
-      // If the controller is non-null, it means that this is an undoable command
-      if (controller) {
-        issueCmd({action:"edit", shape:that, attr:k, before:val[k], after:newVal})}
-      val[k] = newVal;}
+                 var val = {};
+                 this.set = (k,newVal, controller=null) => {
+                   setAttr(shape, {[k]: newVal});
+                   if (tag == "line") {
+                     if (["x1", "y1", "x2", "y2"].includes(k)) {
+                       // Changing the endpoints of the model also changes box
+                       setAttr(box, {[k]: newVal});
+                       // Then we change the nobs, too!
+                       switch (k) {
+                       case "x1":
+                         setAttr(endpoint1, {x: newVal-5}); break;
+                       case "y1":
+                         setAttr(endpoint1, {y: newVal-5}); break;
+                       case "x2":
+                         setAttr(endpoint2, {x: newVal-5}); break;
+                       case "y2":
+                         setAttr(endpoint2, {y: newVal-5}); break;}}}
+                   else if (k == "transform") {
+                     // transform is applied to all associated DOM groups
+                     setAttr(box, {transform: newVal});
+                     setAttr(controls, {transform: newVal});}
+                   // If the controller is non-null, it means that this is an undoable command
+                   if (controller) {
+                     issueCmd({action:"edit", shape:that, attr:k, before:val[k], after:newVal})}
+                   val[k] = newVal;}
 
-    this.get = (k) => val[k];
-    // Only returns copies: no mutation allowed!
-    this.getAll = () => {return {...val}};
+                 this.get = (k) => val[k];
+                 // Only returns copies: no mutation allowed!
+                 this.getAll = () => {return {...val}};
 
-    // Then we initialize the model, also mutating the DOM to match
-    for (let [k,v] of Object.entries({ tag:tag, ...attrs})) {
-      this.set(k, v)}}
+                 // Then we initialize the model, also mutating the DOM to match
+                 for (let [k,v] of Object.entries({ tag:tag, ...attrs})) {
+                   this.set(k, v)}}
 
-  let model = new modelCtor();
+        let model = new modelCtor();
 
-  function unfocus() {
-    unhighlight();
-    setAttr(controls, {visibility: "hidden"});}
-  that.unfocus = unfocus.bind(that);
+        function unfocus() {
+          unhighlight();
+          setAttr(controls, {visibility: "hidden"});}
+        that.unfocus = unfocus.bind(that);
 
-  // Shapes have "movement function", which is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
-  var moveFn;
-  // Abstraction on mouse event handlers
-  function ctrOnMouseDown(fn) {
-    // Returns an event handler
-    return (evt) => {
-      controlChanged = true;  // Switched to a new control
-      evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
-      mouseDown = svgCoor([evt.clientX, evt.clientY]);
-      // User clicked, transfer focus to the receiving element
-      state.focus(that);
-      // The same shape might have different "controllers", so we bind the moveFn regardless
-      moveFn = fn;}}
+        // Shapes have "movement function", which is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
+        var moveFn;
+        // Abstraction on mouse event handlers
+        function ctrOnMouseDown(fn) {
+          // Returns an event handler
+          return (evt) => {
+            controlChanged = true;  // Switched to a new control
+            evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
+            mouseDown = svgCoor([evt.clientX, evt.clientY]);
+            // User clicked, transfer focus to the receiving element
+            state.focus(that);
+            // The same shape might have different "controllers", so we bind the moveFn regardless
+            moveFn = fn;}}
 
-  function respondToMove([dx,dy], evt) {if (moveFn) moveFn([dx,dy], evt)}
-  that.respondToMove = respondToMove;
+        function respondToMove([dx,dy], evt) {if (moveFn) moveFn([dx,dy], evt)}
+        that.respondToMove = respondToMove;
 
-  function highlight() {setAttr(box, {visibility: "visible"})}
-  function unhighlight() {setAttr(box, {visibility: "hidden"})}
+        function highlight() {setAttr(box, {visibility: "visible"})}
+        function unhighlight() {setAttr(box, {visibility: "hidden"})}
 
-  // This flag is for serialization
-  var active = false;
-  that.getActive = () => active;
+        // This flag is for serialization
+        var active = false;
+        that.getActive = () => active;
 
-  let reregister = () => {// Like "register", but issued by undo/redo
-    active = true;
-    // We add the view to the DOM
-    shapeLayer.appendChild(shape);
-    controlLayer.appendChild(controls);
-    boxLayer.appendChild(box);}
-  that.reregister = reregister.bind(that);
+        let reregister = () => {// Like "register", but issued by undo/redo
+          active = true;
+          // We add the view to the DOM
+          shapeLayer.appendChild(shape);
+          controlLayer.appendChild(controls);
+          boxLayer.appendChild(box);}
+        that.reregister = reregister.bind(that);
 
-  let register = () => {
-    reregister()
-    // Add to the undo stack
-    issueCmd({action: "create", shape: that})}
-  shapeList.push(that);
-  that.register = register.bind(that);
+        let register = () => {
+          reregister()
+          // Add to the undo stack
+          issueCmd({action: "create", shape: that})}
+        shapeList.push(that);
+        that.register = register.bind(that);
 
-  let deregister = (doesIssue=true) => {
-    // remove from DOM, the shape's still around for undo/redo
-    state.unfocus(that);
-    active = false;
-    shapeLayer.removeChild(shape);
-    controlLayer.removeChild(controls);
-    boxLayer.removeChild(box);
-    if (doesIssue) {
-      // Add to the undo stack
-      issueCmd({action: "remove", shape: that})}}
-  that.deregister = deregister.bind(that);
+        let deregister = (doesIssue=true) => {
+          // remove from DOM, the shape's still around for undo/redo
+          state.unfocus(that);
+          active = false;
+          shapeLayer.removeChild(shape);
+          controlLayer.removeChild(controls);
+          boxLayer.removeChild(box);
+          if (doesIssue) {
+            // Add to the undo stack
+            issueCmd({action: "remove", shape: that})}}
+        that.deregister = deregister.bind(that);
 
-  // Technically this returns only the copy of the model
-  that.getModel = () => model.getAll();
+        // Technically this returns only the copy of the model
+        that.getModel = () => model.getAll();
 
-  // Emergency hole to undo/redo attribute
-  that.setAttr = (attr,val) => {model.set(attr,val)}}
+        // Emergency hole to undo/redo attribute
+        that.setAttr = (attr,val) => {model.set(attr,val)}}
 
-{// The DOM
-  let lGrid = es("pattern", {id:"largeGrid",
-                             width:80, height:80, patternUnits:"userSpaceOnUse"},
-                 [es("rect", {width:80, height:80, fill:"none"}),
-                  es("path", {d:"M 80 0 H 0 V 80",
-                              fill:"none", stroke:"#777777", strokeWidth:2})]);
+      {// The DOM
+        let lGrid = es("pattern", {id:"largeGrid",
+                                   width:80, height:80, patternUnits:"userSpaceOnUse"},
+                       [es("rect", {width:80, height:80, fill:"none"}),
+                        es("path", {d:"M 80 0 H 0 V 80",
+                                    fill:"none", stroke:"#777777", strokeWidth:2})]);
 
-  let app = document.getElementById("app");
-  // The three SVG Layers
-  shapeLayer = es("g", {id:"shapes"});
-  controlLayer = es("g", {id:"controls"});
-  boxLayer = es("g", {id:"boxes"});
-  // The whole diagram
-  function surfaceOnMouseMove(evt) {
-    if (mouseDown) {// If dragging
-      let [x0,y0] = mouseDown;
-      // Update the mouse position for future dragging
-      let z = panZoom.getZoom();
-      let [x,y] = [evt.clientX/z, evt.clientY/z];
-      mouseDown = [x,y];
-      if (state.getFocused()) {
-        // Issue move command, if there's any listener
-        move([(x-x0),(y-y0)], evt);
-        // Cancel bubble, so svg won't get pan/zoom event
-        evt.cancelBubble = true;}}}
+        let app = document.getElementById("app");
+        // The three SVG Layers
+        shapeLayer = es("g", {id:"shapes"});
+        controlLayer = es("g", {id:"controls"});
+        boxLayer = es("g", {id:"boxes"});
+        // The whole diagram
+        function surfaceOnMouseMove(evt) {
+          if (mouseDown) {// If dragging
+            let [x0,y0] = mouseDown;
+            // Update the mouse position for future dragging
+            let z = panZoom.getZoom();
+            let [x,y] = [evt.clientX/z, evt.clientY/z];
+            mouseDown = [x,y];
+            if (state.getFocused()) {
+              // Issue move command, if there's any listener
+              issueMove([(x-x0),(y-y0)], evt);
+              // Cancel bubble, so svg won't get pan/zoom event
+              evt.cancelBubble = true;}}}
 
-  let svg_el = es("svg", {id:"svg", width:W, height:H, fill:"black"},
-                  // pan-zoom wrapper wrap around here
-                  [es("g", {id:"surface",
-                            onMouseMove: surfaceOnMouseMove,
-                            onMouseUp: (evt) => {mouseDown = null;
-                                                 controlChanged = true;},
-                            onMouseDown: (evt) => {state.focus(null);
-                                                   mouseDown = svgCoor([evt.x,evt.y])}},
-                      [es("defs", {id:"defs"}, [lGrid]),
-                       es("rect", {id:"grid", width:W, height: H,
-                                   fill: "url(#largeGrid)"}),
-                       // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
-                       shapeLayer, boxLayer, controlLayer])]);
+        let svg_el = es("svg", {id:"svg", width:W, height:H, fill:"black"},
+                        // pan-zoom wrapper wrap around here
+                        [es("g", {id:"surface",
+                                  onMouseMove: surfaceOnMouseMove,
+                                  onMouseUp: (evt) => {mouseDown = null;
+                                                       controlChanged = true;},
+                                  onMouseDown: (evt) => {state.focus(null);
+                                                         mouseDown = svgCoor([evt.x,evt.y])}},
+                            [es("defs", {id:"defs"}, [lGrid]),
+                             es("rect", {id:"grid", width:W, height: H,
+                                         fill: "url(#largeGrid)"}),
+                             // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
+                             shapeLayer, boxLayer, controlLayer])]);
 
-  let UI = e("div", {id:"UI"},
-             [// Shape creation
-               e("button", {onClick: (evt) => {new Shape(rectMold).register()}},
-                 [et("Rectangle")]),
-               e("button", {onClick: (evt) => {new Shape(circMold).register()}},
-                 [et("Circle")]),
-               e("button", {onClick: (evt) => {new Shape(lineMold).register()}},
-                 [et("Line")]),
+        let UI = e("div", {id:"UI"},
+                   [// Shape creation
+                     e("button", {onClick: (evt) => {new Shape(rectMold).register()}},
+                       [et("Rectangle")]),
+                     e("button", {onClick: (evt) => {new Shape(circMold).register()}},
+                       [et("Circle")]),
+                     e("button", {onClick: (evt) => {new Shape(lineMold).register()}},
+                       [et("Line")]),
 
-               // Save to file
-               e("button", {onClick:(evt) => saveDiagram()},
-                 [et("Save")]),
-               // Load from file
-               e("button", {onClick:(evt) => triggerUpload()},
-                 [et("Load")]),
+                     // Save to file
+                     e("button", {onClick:(evt) => saveDiagram()},
+                       [et("Save")]),
+                     // Load from file
+                     e("button", {onClick:(evt) => triggerUpload()},
+                       [et("Load")]),
 
-               // Undo/Redo buttons
-               undoBtn, redoBtn
-             ]);
-  app.appendChild(UI);
-  app.appendChild(svg_el);
-  // SVG panzoom only works with whole SVG elements
-  panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
+                     // Undo/Redo buttons
+                     undoBtn, redoBtn
+                   ]);
+        app.appendChild(UI);
+        app.appendChild(svg_el);
+        // SVG panzoom only works with whole SVG elements
+        panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
-// @TodoList
-// Add the other box resize controls
-// Change viewport size depending on the device
-// Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
-// Add "send-to-front/back"
+      // @TodoList
+      // Add the other box resize controls
+      // Rotation
+      // Change viewport size depending on the device
+      // Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
+      // Add "send-to-front/back"
