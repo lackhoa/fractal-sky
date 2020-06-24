@@ -3,8 +3,6 @@
 // Shapes are under 2 translations: by the view and by user's arrangement
 var panZoom = null;  // A third-party svg pan-zoom thing
 var mouseDown = null;  // Previous mouse position (in svg coordinate). The event attribute is no use because movement can be handled by different elements
-var focused = null;  // The focused shape
-var moveFn = null;  // Movement listener
 let shapeList = [];  // Keep track of all added shapes (including the ones removed)
 
 let log = console.log;
@@ -45,7 +43,6 @@ function issueCmd(cmd) {
   updateUndoUI();}
 
 function undo() {
-  moveFn = null;  // We cannot extend undo/redo
   let cmd = undoStack.pop();
   switch (cmd.action) {
   case "create":
@@ -64,7 +61,6 @@ function undo() {
   updateUndoUI();}
 
 function redo() {
-  moveFn = null;  // We cannot extend undo/redo
   let cmd = redoStack.pop();
   switch (cmd.action) {
   case "create":
@@ -82,14 +78,39 @@ function redo() {
   log({undo: undoStack, redo: redoStack});
   updateUndoUI();}
 
+// There's only one of these
+function State() {
+  let that = this;
+  var focused = null;
+  that.getFocused = () => focused;
+
+  function focus(shape) {
+    // Shape can be null
+    if (focused) focused.unfocus()
+    focused = shape;
+    if (shape) shape.focus();}
+  that.focus = focus;
+
+  // Make sure a shape isn't focused
+  function unfocus(shape) {if (focused == shape) focus(null)}
+  that.unfocus = unfocus;}
+
+let state = new State();
+
+function move(offset, evt) {
+  let focused = state.getFocused();
+  if (focused) focused.respondToMove(offset, evt);}
+
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
               "ctrl-y": tryRedo,
-              "ArrowRight": () => {if (moveFn) {moveFn([10,0])}},
-              "ArrowUp": () => {if (moveFn) {moveFn([0,-10])}},
-              "ArrowDown": () => {if (moveFn) {moveFn([0,10])}},
-              "ArrowLeft": () => {if (moveFn) {moveFn([-10,0])}},
-              "Delete": () => {if (focused) {focused.deregister()}},}
+              "ArrowRight": () => move([10,0]),
+              "ArrowUp": () => move([0,-10]),
+              "ArrowDown": () => move([0,10]),
+              "ArrowLeft": () => move([-10,0]),
+              "Delete": () => {
+                let focused = state.getFocused();
+                if (focused) {focused.deregister()}},}
 window.onkeydown = (evt) => {
   let keys = [];
   if (evt.ctrlKey) {keys.push("ctrl")}
@@ -116,11 +137,13 @@ let commonMold = {fill:"transparent", stroke:"black",
 let rectMold = {...commonMold, tag:"rect", width:1, height:1};
 let circMold = {...commonMold, tag:"circle", cx:0.5, cy:0.5, r:0.5};
 let lineMold = {...commonMold, tag: "line"};
-let thickLineMold = {...lineMold, "stroke-width":10, stroke:"#0000FF55"};
+let thickLineMold = {...lineMold, "stroke-width":10, stroke:"#0000FF55",
+                     cursor:"move"};
 
 let frameMold = {...commonMold, tag:"rect",
                  width:1, height:1, cursor:"move", fill:"#0000FF55",};
-let cornerMold = {...commonMold, tag:"rect", width:0.1, height:0.1, fill:"red"};
+let cornerMold = {...commonMold, tag:"rect", width:0.1, height:0.1, stroke:"red"};
+let endpointMold = {...cornerMold, width:10, height:10};
 
 function serialize(shape) {return shape.getModel()}
 
@@ -171,9 +194,9 @@ function Shape(mold) {
     {...boxMold, visibility: "hidden",
      // Allways handle mouse event, visible or not
      "pointer-events": "all",
-     onMouseEnter: () => {if (!mouseDown) {highlight()}},
+     onMouseEnter: () => {if (!mouseDown) highlight()},
      // The mouse can leave a shape and still be dragging it
-     onMouseLeave: () => {if (that != focused) {unhighlight()}},
+     onMouseLeave: () => {if (that != state.getFocused()) unhighlight()},
      onMouseDown: ctrOnMouseDown(move)});
 
   let ctag = cornerMold.tag;
@@ -185,9 +208,9 @@ function Shape(mold) {
     let endpoint2Md = ([dx,dy]) => {
       let {x2,y2} = model.getAll();
       model.set("x2", x2+dx); model.set("y2", y2+dy);}
-    var endpoint1 = es(ctag, {...cornerMold, width:10, height:10,
+    var endpoint1 = es(ctag, {...endpointMold,
                               onMouseDown:ctrOnMouseDown(endpoint1Md)});
-    var endpoint2 = es(ctag, {...cornerMold, width:10, height:10,
+    var endpoint2 = es(ctag, {...endpointMold,
                               onMouseDown:ctrOnMouseDown(endpoint2Md)});
     controls = es("g", {visibility: "hidden"},
                   [endpoint1, endpoint2]);}
@@ -197,9 +220,7 @@ function Shape(mold) {
       let [a,b,c,d,e,f] = model.get("transform");
       model.set("transform", [a+dx,b, c,d+dy, e,f], "resizeBR")}
 
-    function resizeBRSquare([dx,dy]) {
-      let [a,b,c,d,e,f] = model.get("transform");
-      model.set("transform", [a+dx,b, c,a+dx, e,f], "resizeBR")}
+    function resizeBRSquare([dx,dy]) {resizeBR([dx,dx]);}
 
     function resizeBRDispatch([dx,dy], evt) {// If "Shift" is pressed, preserve w/h ratio
       if (evt && evt.shiftKey) {resizeBRSquare([dx,dy])}
@@ -207,6 +228,21 @@ function Shape(mold) {
 
     function resizeR([dx, dy]) {resizeBR([dx, 0])}
     function resizeB([dx, dy]) {resizeBR([0, dy])}
+
+    // The top-left resizers are pretty much translate and then use BR
+    function resizeTL([dx,dy]) {move([dx,dy]); resizeBR([-dx,-dy]);}
+
+    function resizeTLSquare([dx,dy]) {
+      move([dx,dx]);  // The scaling only depends on dx, so only move that dx
+      resizeBR([-dx,-dx])}
+
+    function resizeTLDispatch([dx,dy], evt) {
+      if (evt && evt.shiftKey) {resizeTLSquare([dx,dy])}
+      else {resizeTL([dx,dy])}}
+
+    function resizeL([dx, dy]) {resizeTL([dx, 0])}
+    function resizeT([dx, dy]) {resizeTL([0, dy])}
+
     controls = es(
       "g", {visibility: "hidden",},
       [// Horizontal resizing (right-side)
@@ -220,12 +256,25 @@ function Shape(mold) {
         // Bottom-right corner
         es(ctag, {...cornerMold, x:0.9, y:0.9,
                   cursor:"se-resize",
-                  onMouseDown: ctrOnMouseDown(resizeBRDispatch)})]);}
+                  onMouseDown: ctrOnMouseDown(resizeBRDispatch)}),
+        // Top-left corner
+        es(ctag, {...cornerMold, x:0, y:0,
+                  cursor:"nw-resize",
+                  onMouseDown: ctrOnMouseDown(resizeTLDispatch)}),
+        // Left side
+        es(ctag, {...cornerMold, x:0, y:0.45,
+                  cursor:"w-resize",
+                  onMouseDown: ctrOnMouseDown(resizeL)}),
+        // Top side
+        es(ctag, {...cornerMold, x:0.45, y:0,
+                  cursor:"n-resize",
+                  onMouseDown: ctrOnMouseDown(resizeT)}),
+      ]);}
 
   function focus() {
     highlight();
-    setAttr(controls, {visibility: "visible"});
-    focused = that;}
+    setAttr(controls, {visibility: "visible"});}
+  that.focus = focus;
 
   function modelCtor() {
     // Guarantees no mutation without going through updateFn
@@ -239,18 +288,13 @@ function Shape(mold) {
           // Then we change the nobs, too!
           switch (k) {
           case "x1":
-            setAttr(endpoint1, {x: newVal});
-            break;
+            setAttr(endpoint1, {x: newVal-5}); break;
           case "y1":
-            setAttr(endpoint1, {y: newVal});
-            break;
+            setAttr(endpoint1, {y: newVal-5}); break;
           case "x2":
-            setAttr(endpoint2, {x: newVal});
-            break;
+            setAttr(endpoint2, {x: newVal-5}); break;
           case "y2":
-            setAttr(endpoint2, {y: newVal});
-            break;
-          default: break;}}}
+            setAttr(endpoint2, {y: newVal-5}); break;}}}
       else if (k == "transform") {
         // transform is applied to all associated DOM groups
         setAttr(box, {transform: newVal});
@@ -272,23 +316,25 @@ function Shape(mold) {
 
   function unfocus() {
     unhighlight();
-    setAttr(controls, {visibility: "hidden"});
-    focused = null;}
+    setAttr(controls, {visibility: "hidden"});}
   that.unfocus = unfocus.bind(that);
 
+  // Shapes have "movement function", which is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
+  var moveFn;
   // Abstraction on mouse event handlers
-  function ctrOnMouseDown (msg) {
+  function ctrOnMouseDown(fn) {
     // Returns an event handler
     return (evt) => {
       controlChanged = true;  // Switched to a new control
       evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
       mouseDown = svgCoor([evt.clientX, evt.clientY]);
       // User clicked, transfer focus to the receiving element
-      if (focused != that) {
-        if (focused) {focused.unfocus()}
-        focus();}
+      state.focus(that);
       // The same shape might have different "controllers", so we bind the moveFn regardless
-      moveFn = msg.bind(that);}}
+      moveFn = fn;}}
+
+  function respondToMove([dx,dy], evt) {if (moveFn) moveFn([dx,dy], evt)}
+  that.respondToMove = respondToMove;
 
   function highlight() {setAttr(box, {visibility: "visible"})}
   function unhighlight() {setAttr(box, {visibility: "hidden"})}
@@ -314,7 +360,7 @@ function Shape(mold) {
 
   let deregister = (doesIssue=true) => {
     // remove from DOM, the shape's still around for undo/redo
-    unfocus();
+    state.unfocus(that);
     active = false;
     shapeLayer.removeChild(shape);
     controlLayer.removeChild(controls);
@@ -344,14 +390,17 @@ function Shape(mold) {
   boxLayer = es("g", {id:"boxes"});
   // The whole diagram
   function surfaceOnMouseMove(evt) {
-    if (mouseDown && moveFn) {// If dragging, and there's an active listener
-      evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
+    if (mouseDown) {// If dragging
       let [x0,y0] = mouseDown;
       // Update the mouse position for future dragging
       let z = panZoom.getZoom();
       let [x,y] = [evt.clientX/z, evt.clientY/z];
       mouseDown = [x,y];
-      moveFn([x-x0, y-y0], evt);}}
+      if (state.getFocused()) {
+        // Issue move command, if there's any listener
+        move([(x-x0),(y-y0)], evt);
+        // Cancel bubble, so svg won't get pan/zoom event
+        evt.cancelBubble = true;}}}
 
   let svg_el = es("svg", {id:"svg", width:W, height:H, fill:"black"},
                   // pan-zoom wrapper wrap around here
@@ -359,10 +408,8 @@ function Shape(mold) {
                             onMouseMove: surfaceOnMouseMove,
                             onMouseUp: (evt) => {mouseDown = null;
                                                  controlChanged = true;},
-                            onMouseDown: (evt) => {if (focused)
-                                                   {focused.unfocus();
-                                                    moveFn = null;}
-                                                   mouseDown = svgCoor([evt.x,evt.y]);}},
+                            onMouseDown: (evt) => {state.focus(null);
+                                                   mouseDown = svgCoor([evt.x,evt.y])}},
                       [es("defs", {id:"defs"}, [lGrid]),
                        es("rect", {id:"grid", width:W, height: H,
                                    fill: "url(#largeGrid)"}),
@@ -395,6 +442,6 @@ function Shape(mold) {
 
 // @TodoList
 // Add the other box resize controls
-// Add "send-to-front/back"
 // Change viewport size depending on the device
-// Change properties like stroke, stroke-width and fill
+// Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
+// Add "send-to-front/back"
