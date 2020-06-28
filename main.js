@@ -33,9 +33,8 @@ let shapeList = [];  // Keep track of all added shapes (including the ones remov
 
 let log = console.log;
 // Store them, so they won't change
-let [W, H] = [window.innerWidth - (window.innerWidth % 100),
-              window.innerHeight - (window.innerHeight % 100)];
-let D = Math.min(W, H);
+let [W, H] = [window.innerWidth, window.innerHeight];
+let D = Math.min(W,H) - (Math.min(W,H) % 100);
 
 // Undo/Redo stuff
 // "undoStack" and "redoStack" are lists of commands
@@ -125,9 +124,10 @@ function State() {
 
 let state = new State();
 
-function arrowMove(offset) {
+function arrowMove([dx,dy]) {
   let focused = state.getFocused();
-  if (focused) focused.move(offset)}
+  if (focused) focused.move([dx,dy])
+  else {panZoom.panBy({x:-dx, y:-dy})}}
 
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
@@ -451,11 +451,21 @@ function Shape(mold) {
   that.setAttrsAuto = (attrs) => model.set(attrs, false)}
 
 {// The DOM
-  let lGrid = es("pattern", {id:"largeGrid",
-                             width:100, height:100, patternUnits:"userSpaceOnUse"},
-                 [es("rect", {width:100, height:100, fill:"none"}),
-                  es("path", {d:"M 100 0 H 0 V 100",
-                              fill:"none", stroke:"#777777", "stroke-width":2})]);
+  let tile = es("pattern", {id:"tile",
+                            width:100, height:100, patternUnits:"userSpaceOnUse"},
+                [es("rect", {width:100, height:100, fill:"none"}),
+                 es("path", {d:"M 100 0 H 0 V 100",
+                             fill:"none", stroke:"#777777", "stroke-width":2})]);
+  let frame = es("g", {id:"frame"},
+                 [// This is i
+                   es("path", {d:`M 0 0 H ${D}`, stroke:"red", "line-width":3}),
+                   es("path", {d:`M ${D-20} ${-20} L ${D} 0 L ${D-20} ${+20}`,
+                               stroke:"red", fill:"transparent", "line-width":3}),
+                   // This is j
+                   es("path", {d:`M 0 0 V ${D}`, stroke:"green"}),
+                   es("path", {d:`M ${-20} ${D-20} L 0 ${D} L ${+20} ${D-20}`,
+                               stroke:"green", fill:"transparent", "line-width":3}),
+                 ]);
 
   let app = document.getElementById("app");
   // The three SVG Layers
@@ -472,7 +482,7 @@ function Shape(mold) {
       evt.cancelBubble = true;}}
 
   let svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
-                  // "W+1" and "H+1" to show the grid at the border
+                  // "W+1" and "H+1" is to show the grid at the border
                   // pan-zoom wrapper wrap around here
                   [es("g", {id:"surface",
                             onMouseMove: surfaceOnMouseMove,
@@ -480,11 +490,18 @@ function Shape(mold) {
                                                  mouseMgr.handle(evt);},
                             onMouseDown: (evt) => {state.focus(null);
                                                    mouseMgr.handle(evt);}},
-                      [es("defs", {id:"defs"}, [lGrid]),
-                       es("rect", {id:"grid", width:W+1, height: H+1,
-                                   fill: "url(#largeGrid)"}),
-                       // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
-                       shapeLayer, boxLayer, controlLayer])]);
+                      [// Definitions
+                        es("defs", {id:"defs"}, [tile, frame]),
+                        // The grid
+                        es("rect", {id:"grid",
+                                    width:2*W+1, height:2*H+1,
+                                    // Offset so that things will be in the middle
+                                    x:-W/2, y:-H/2,
+                                    fill:"url(#tile)"}),
+                        // The frame
+                        es("use", {id:"the-frame", href:"#frame"}),
+                        // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
+                        shapeLayer, boxLayer, controlLayer])]);
 
   let UI = e("div", {id:"UI"},
              [// Shape creation
@@ -508,11 +525,14 @@ function Shape(mold) {
   app.appendChild(UI);
   app.appendChild(svg_el);
   // SVG panzoom only works with whole SVG elements
-  panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
+  panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false,
+                                // Don't do any bullshit on startup
+                                fit:false, center:false});
+  panZoom.pan({x:20, y:20});}
 
 /* @TodoList
-   - Rotation is still not exactly right (skips around, when zoomed out)
-   - Make the grid bigger, leave some scrolling space
+   - Frame: add smaller frames
+   - Frame: Render echos
    - Add "send-to-front/back"
    - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
 */
