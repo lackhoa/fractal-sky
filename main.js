@@ -2,13 +2,38 @@
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
 var panZoom = null;  // A third-party svg pan-zoom thing
-var mouseDown = null;  // Previous mouse position (in svg coordinate). The event attribute is no use because movement can be handled by different elements
-var prevMouseDown = null;  // Gotta keep track of the previous position!
-var rotationPivot = null;
+// There's only ever one mouse manager: it keeps track of mouse position, that's it
+function MouseManager() {
+  // Keep track of mouse position (in svg coordinate).
+  // The offset attribute can't be used, since movement can be handled by different elements
+  var mousePos = null;
+  this.getMousePos = () => mousePos;
+  var prevMousePos = null;  // Previous mouse pos
+  this.getPrevMousePos = () => prevMousePos;
+
+  function svgCoor([x,y]) {
+    let z = panZoom.getZoom();
+    let d = panZoom.getPan();
+    return [(x-d.x)/z, (y-d.y)/z];}
+
+  function handle(evt) {
+    prevMousePos = mousePos;
+    mousePos = svgCoor([evt.x,evt.y]);}
+  this.handle = handle;}
+
+function mouseOffset() {
+  let [x1,y1] = mouseMgr.getPrevMousePos();
+  let [x2,y2] = mouseMgr.getMousePos();
+  return [x2-x1, y2-y1]}
+
+let mouseMgr = new MouseManager();
 let shapeList = [];  // Keep track of all added shapes (including the ones removed)
 
 let log = console.log;
-let [W, H] = [1000, 600];
+// Store them, so they won't change
+let [W, H] = [window.innerWidth - (window.innerWidth % 100),
+              window.innerHeight - (window.innerHeight % 100)];
+let D = Math.min(W, H);
 
 // Undo/Redo stuff
 // "undoStack" and "redoStack" are lists of commands
@@ -29,7 +54,7 @@ function updateUndoUI() {
   redoBtn.disabled = !canRedo();}
 
 // Save the command to the undo stack
-var controlChanged = true;
+var controlChanged = true;  // This flag is set to truth to signify that the undo should insert a "break"
 function issueCmd(cmd) {
   let len = undoStack.length;
   // So the deal is this: if the edit continuously comes from the same source, then we view that as the same edit
@@ -98,17 +123,17 @@ function State() {
 
 let state = new State();
 
-function issueMove(offset, evt) {
+function arrowMove(offset) {
   let focused = state.getFocused();
-  if (focused) focused.respondToMove(offset, evt);}
+  if (focused) focused.move(offset)}
 
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
               "ctrl-y": tryRedo,
-              "ArrowRight": (evt) => issueMove([10,0], evt),
-              "ArrowUp": (evt) => issueMove([0,-10], evt),
-              "ArrowDown": (evt) => issueMove([0,10], evt),
-              "ArrowLeft": (evt) => issueMove([-10,0], evt),
+              "ArrowRight": (evt) => arrowMove([10, 0]),
+              "ArrowUp": (evt)    => arrowMove([0,  -10]),
+              "ArrowDown": (evt)  => arrowMove([0,  10]),
+              "ArrowLeft": (evt)  => arrowMove([-10,0]),
               "Delete": () => {
                 let focused = state.getFocused();
                 if (focused) {focused.deregister()}},}
@@ -129,11 +154,15 @@ function extend([a,b, c,d, e,f], [dx,dy]) {
   return [a+dx,b, c,d+dy, e,f]}
 function transform([a,b, c,d, e,f], [x,y]) {
   return [a*x+c*y+e, b*x+d*y+f]}
-function rotate([a,b, c,d, e,f], angle) {
+function compose([A,B, C,D, E,F], [a,b, c,d, e,f]) {
+  return [(a*A + b*C), (a*B + b*D),
+          (c*A + d*C), (c*B + d*D),
+          (e*A + f*C + E), (e*B + f*D + F),]}
+function rotate(m, angle) {
   let S = Math.sin(angle);
   let C = Math.cos(angle);
   let M = [C,S, -S,C, 0,0];
-  return [...transform(M, [a,b]), ...transform(M, [c,d]), ...transform(M, [e,f])]}
+  return compose(M, m);}
 
 // These models define shape and their associated controls
 // Note: "tag" denotes the DOM element's tag, other attributes are consistent with my DOM model
@@ -146,14 +175,11 @@ let lineBoxMold = {...lineMold, "stroke-width":10, stroke:"#0000FF55",};
 
 let boxMold = {...commonMold, tag:"rect",
                width:1, height:1, fill:"#0000FF55",};
-let cornerMold = {...commonMold, tag:"rect", width:0.1, height:0.1, stroke:"red"};
-let endpointMold = {...cornerMold, width:10, height:10};
+let cornerWidth = 20;
+let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
+                  tag:"rect", stroke:"red"};
 
 function serialize(shape) {return shape.getModel()}
-
-function svgCoor([x,y]) {
-  let z = panZoom.getZoom();
-  return [x/z, y/z];}
 
 var shapeLayer; var controlLayer; var boxLayer;
 function update(obj, k, f) {obj.set({[k]: f(obj.get(k))})}
@@ -182,13 +208,14 @@ function Shape(mold) {
 
   var move;
   if (tag == "line") {
-    move = ([dx, dy]) => {
+    move = ([dx,dy]) => {
       let {x1,y1,x2,y2} = model.getAll();
       model.set({x1:x1+dx, y1:y1+dy,
                  x2:x2+dx, y2:y2+dy});}}
   else {
-    move = ([dx, dy]) => {
+    move = ([dx,dy]) => {
       update(model, "transform", (m) => translate(m, [dx,dy]))}}
+  this.move = move;
 
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
   var bMold = (tag == "line") ? lineBoxMold : boxMold;
@@ -197,9 +224,9 @@ function Shape(mold) {
     {...bMold, visibility: "hidden",
      // Allways handle mouse event, visible or not
      "pointer-events": "all",
-     onMouseEnter: () => {if (!mouseDown) highlight()},
+     onMouseEnter: (evt) => {if (evt.buttons == 0) highlight()},
      // The mouse can leave a shape and still be dragging it
-     onMouseLeave: () => {if (that != state.getFocused()) unhighlight()},
+     onMouseLeave: () => {if (that != state.getFocused()) {unhighlight()}},
      onMouseDown: (evt) => {state.focus(that);
                             ctrOnMouseDown(move)(evt);}});
 
@@ -212,66 +239,83 @@ function Shape(mold) {
     let endpoint2Md = ([dx,dy]) => {
       let {x2,y2} = model.getAll();
       model.set({x2:x2+dx, y2:y2+dy});}
-    var endpoint1 = es(ctag, {...endpointMold,
+    var endpoint1 = es(ctag, {...cornerMold,
                               onMouseDown:ctrOnMouseDown(endpoint1Md)});
-    var endpoint2 = es(ctag, {...endpointMold,
+    var endpoint2 = es(ctag, {...cornerMold,
                               onMouseDown:ctrOnMouseDown(endpoint2Md)});
     controls = es("g", {visibility: "hidden"},
                   [endpoint1, endpoint2]);}
   else {
-    function iResize([dx,dy], evt) {
+    function iMove([dx,dy]) {
       let [a,b,c,d,e,f] = model.get("transform");
-      var m;
-      // shift: extend the i vector, maintain ratio
-      if (evt.shiftKey) {
-        let A = a+dx; let D = (d+dx);
-        let s = A/a;
-        m = [A,b*s, c*s,D, e,f]}
-      // control: freely move the i vector
-      else if (evt.ctrlKey) {m = [a+dx,b+dy, c,d, e,f]}
-      // nothing pressed: extend the i vector
-      else {let A = a+dx; m = [A,b*A/a, c,d, e,f]}
-      model.set({transform: m})}
+      model.set({transform: [a+dx,b+dy, c,d, e,f]})}
 
-    function jResize([dx,dy], evt) {
+    function jMove([dx,dy]) {
       let [a,b,c,d,e,f] = model.get("transform");
-      var m;
-      // shift: extend the j vector, maintain ratio
-      if (evt.shiftKey) {
-        let D = d+dy; let A = a+dy;
-        let s = D/d;
-        m = [A,b*s, c*s,D, e,f]}
-      // control: freely move the j vector
-      else if (evt.ctrlKey) {m = [a,b, c+dx,d+dy, e,f]}
-      // nothing pressed: extend the j vector
-      else {let C = c+dx; m = [a,b, C,d*C/c, e,f]}
-      model.set({transform: m})}
+      model.set({transform: [a,b, c+dx,d+dy, e,f]})}
 
-    function rotator([dx,dy], evt) {
-      let [x,y] = prevMouseDown;
-      let [X,Y] = mouseDown;  // mouse position in svg coordinate
-      let xform = model.get("transform")
-      if (!rotationPivot) {
-        rotationPivot = transform(xform, [0.5,0.5])}
-      let [a,b,c,d,e,f] = xform;
+    function xExtend([dx,dy], evt) {
+      // If "shift" is pressed, maintain ratio
+      let [a,b,c,d,e,f] = model.get("transform");
+      let s = (a+dx)/a;
+      var m;
+      if (evt.shiftKey) {
+        m = [a*s,b*s, c*s,d*s, e,f];}
+      else {m = [a+dx,b*s, c,d, e,f]}
+      model.set({transform: m});}
+
+    function yExtend([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      let s = (d+dy)/d;
+      var m;
+      if (evt.shiftKey) {
+        m = [a*s,b*s, c*s,d*s, e,f];}
+      else {m = [a,b, c*s,d+dy, e,f]}
+      model.set({transform: m});}
+
+    var rotationPivot;  // This gets set whenever the rotator is pressed
+    // @optimize: store original matrix & angle
+    function rotator() {
+      let [x,y] = mouseMgr.getPrevMousePos();
+      let [X,Y] = mouseMgr.getMousePos();  // mouse position in svg coordinate
+      let xform = model.get("transform");
       let [ox,oy] = rotationPivot;
       model.set({transform: translate(rotate(translate(xform, [-ox,-oy]),
                                              (Math.atan2(Y-oy, X-ox) -
                                               Math.atan2(y-oy, x-ox))),
                                       [ox,oy])})}
 
-    controls = es("g",
-                  {visibility: "hidden"},
-                  [es(ctag, {...cornerMold, x:0.95,  y:-0.05,
-                             onMouseDown:ctrOnMouseDown(iResize)}),
-                   es(ctag, {...cornerMold, x:-0.05, y:0.95,
-                             onMouseDown:ctrOnMouseDown(jResize)}),
-                   // Rotator
-                   es(ctag, {...cornerMold, x:1, y:1,
-                             onMouseDown:
-                             (evt) => {
-                               rotationPivot = null;
-                               ctrOnMouseDown(rotator)(evt)}})]);}
+    // Freely changing i and j
+    var iCtr = es(ctag, {...cornerMold, x:0.95,  y:-0.05,
+                         onMouseDown:ctrOnMouseDown(iMove)})
+    var jCtr = es(ctag, {...cornerMold, x:-0.05, y:0.95,
+                         onMouseDown:ctrOnMouseDown(jMove)});
+    // Side controls
+    var iSide = es("line", {...lineBoxMold, x1:1,y1:0.2, x2:1,y2:0.8,
+                            onMouseDown:ctrOnMouseDown(xExtend),
+                            cursor:"col-resize",
+                            stroke:"#FF000055"});
+    var jSide = es("line", {...lineBoxMold, x1:0.2,y1:1, x2:0.8,y2:1,
+                            onMouseDown:ctrOnMouseDown(yExtend),
+                            cursor:"row-resize",
+                            stroke:"#FF000055"});
+    // Rotator
+    var rotCtr = es("g", {onMouseDown:
+                          (evt) => {
+                            // Let the pivot be at the center of the shape
+                            let xform = model.get("transform");
+                            rotationPivot = transform(xform, [0.5,0.5]);
+                            ctrOnMouseDown(rotator)(evt)}},
+                    // dimension ~100x100
+                    [es("path", {d:"M 75 25 A 50 50, 0, 1, 1, 25 75",
+                                 stroke:"red", "stroke-width": 5,
+                                 fill:"transparent"}),
+                     es("line", {x1:"25", y1:"75", x2:"15", y2:"85",
+                                 stroke:"red", "stroke-width":5}),
+                     es("line", {x1:"25", y1:"75", x2:"35", y2:"85",
+                                 stroke:"red", "stroke-width":5})])
+    controls = es("g", {visibility: "hidden"},
+                  [iCtr, jCtr, iSide, jSide, rotCtr]);}
 
   function focus() {
     highlight();
@@ -285,21 +329,34 @@ function Shape(mold) {
         // Changing the endpoints of the model also changes box
         setAttr(box, {[k]: v});
         // Then we change the nobs, too!
+        let V = v-cornerWidth/2;
         switch (k) {
         case "x1":
-          setAttr(endpoint1, {x: v-5}); break;
+          setAttr(endpoint1, {x: V}); break;
         case "y1":
-          setAttr(endpoint1, {y: v-5}); break;
+          setAttr(endpoint1, {y: V}); break;
         case "x2":
-          setAttr(endpoint2, {x: v-5}); break;
+          setAttr(endpoint2, {x: V}); break;
         case "y2":
-          setAttr(endpoint2, {y: v-5}); break;}}}}
+          setAttr(endpoint2, {y: V}); break;}}}}
   else {
+    // This function is in charge of modifying the controller's locations
     updateFn = (k,v) => {
       if (k == "transform") {
-        // transform is applied to all associated DOM groups
+        // transform is applied directly to the box
         setAttr(box, {transform: v});
-        setAttr(controls, {transform: v});}}}
+        // Then we adjust each controller position
+        let [a,b,c,d,e,f] = v;
+        let tl = transform(v, [0,0]);
+        let tr = transform(v, [1,0]);
+        let bl = transform(v, [0,1]);
+        let w = cornerWidth / 2;
+        setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
+        setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
+        setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
+                                     tl[0]-w-5, tl[1]-w-5]});
+        setAttr(iSide, {transform:v});
+        setAttr(jSide, {transform:v});}}}
 
   function modelCtor() {
     // Guarantees no mutation without going through updateFn
@@ -332,19 +389,20 @@ function Shape(mold) {
 
   // Shapes have "movement function", which is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
   var moveFn;
-  // Abstraction on mouse event handlers
+  // All mouse event handlers must implement these
   function ctrOnMouseDown(fn) {
     // Returns an event handler
     return (evt) => {
       controlChanged = true;  // Switched to a new control
       evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
-      prevMouseDown = mouseDown;
-      mouseDown = svgCoor([evt.clientX, evt.clientY]);
+      mouseMgr.handle(evt);
       // The same shape might have different "controllers", so we bind the moveFn regardless
       moveFn = fn;}}
 
-  function respondToMove([dx,dy], evt) {if (moveFn) moveFn([dx,dy], evt)}
-  that.respondToMove = respondToMove;
+  function respondToDrag(evt) {console.assert(moveFn);
+                               // Pass in the event to detect modifier keys
+                               moveFn(mouseOffset(), evt)}
+  that.respondToDrag = respondToDrag;
 
   function highlight() {setAttr(box, {visibility: "visible"})}
   function unhighlight() {setAttr(box, {visibility: "hidden"})}
@@ -400,31 +458,24 @@ function Shape(mold) {
   boxLayer = es("g", {id:"boxes"});
   // The whole diagram
   function surfaceOnMouseMove(evt) {
-    if (mouseDown) {// If dragging
-      let [x0,y0] = mouseDown;
-      // Update the mouse position for future dragging
-      let z = panZoom.getZoom();
-      let [x,y] = [evt.clientX/z, evt.clientY/z];
-      prevMouseDown = [x0,y0];
-      mouseDown = [x,y];
-      if (state.getFocused()) {
-        // Issue move command, if there's any listener
-        issueMove([(x-x0),(y-y0)], evt);
-        // Cancel bubble, so svg won't get pan/zoom event
-        evt.cancelBubble = true;}}}
+    mouseMgr.handle(evt);
+    let focused = state.getFocused()
+    if ((evt.buttons == 1) && focused) {// If dragging & there's a listener
+      focused.respondToDrag(evt);
+      // Cancel bubble, so svg won't get pan/zoom event
+      evt.cancelBubble = true;}}
 
-  let svg_el = es("svg", {id:"svg", width:W, height:H, fill:"black"},
+  let svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
+                  // "W+1" and "H+1" to show the grid at the border
                   // pan-zoom wrapper wrap around here
                   [es("g", {id:"surface",
                             onMouseMove: surfaceOnMouseMove,
-                            onMouseUp: (evt) => {mouseDown = null;
-                                                 rotationPivot = null;
-                                                 controlChanged = true;},
+                            onMouseUp: (evt) => {controlChanged = true;
+                                                 mouseMgr.handle(evt);},
                             onMouseDown: (evt) => {state.focus(null);
-                                                   prevMouseDown = mouseDown;
-                                                   mouseDown = svgCoor([evt.x,evt.y])}},
+                                                   mouseMgr.handle(evt);}},
                       [es("defs", {id:"defs"}, [lGrid]),
-                       es("rect", {id:"grid", width:W, height: H,
+                       es("rect", {id:"grid", width:W+1, height: H+1,
                                    fill: "url(#largeGrid)"}),
                        // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
                        shapeLayer, boxLayer, controlLayer])]);
@@ -453,9 +504,9 @@ function Shape(mold) {
   // SVG panzoom only works with whole SVG elements
   panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
-// @TodoList
-// Add the other box resize controls
-// Rotation
-// Change viewport size depending on the device
-// Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
-// Add "send-to-front/back"
+/* @TodoList
+   - Change side direction: invert and rotate sideway when needed
+   - Make the grid bigger, leave some scrolling space
+   - Add "send-to-front/back"
+   - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
+*/
