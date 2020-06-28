@@ -1,4 +1,5 @@
 "use strict";
+let abs = Math.abs;
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
 var panZoom = null;  // A third-party svg pan-zoom thing
@@ -254,23 +255,23 @@ function Shape(mold) {
       let [a,b,c,d,e,f] = model.get("transform");
       model.set({transform: [a,b, c+dx,d+dy, e,f]})}
 
-    function xExtend([dx,dy], evt) {
+    function iExtend([dx,dy], evt) {
       // If "shift" is pressed, maintain ratio
       let [a,b,c,d,e,f] = model.get("transform");
-      let s = (a+dx)/a;
+      // The havior depends on the orientation of the control
+      // Division by zero can only occur when a = b = 0
+      let s = abs(a) > abs(b) ? (a+dx)/a : (b+dy)/b;
       var m;
-      if (evt.shiftKey) {
-        m = [a*s,b*s, c*s,d*s, e,f];}
-      else {m = [a+dx,b*s, c,d, e,f]}
+      if (evt.shiftKey) {m = [a*s,b*s, c*s,d*s, e,f];}
+      else {m = [a*s,b*s, c,d, e,f]}
       model.set({transform: m});}
 
-    function yExtend([dx,dy], evt) {
+    function jExtend([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
-      let s = (d+dy)/d;
+      let s = abs(c) > abs(d) ? (c+dx)/c : (d+dy)/d;
       var m;
-      if (evt.shiftKey) {
-        m = [a*s,b*s, c*s,d*s, e,f];}
-      else {m = [a,b, c*s,d+dy, e,f]}
+      if (evt.shiftKey) {m = [a*s,b*s, c*s,d*s, e,f]}
+      else {m = [a,b, c*s,d*s, e,f]}
       model.set({transform: m});}
 
     var rotationPivot;  // This gets set whenever the rotator is pressed
@@ -292,11 +293,11 @@ function Shape(mold) {
                          onMouseDown:ctrOnMouseDown(jMove)});
     // Side controls
     var iSide = es("line", {...lineBoxMold, x1:1,y1:0.2, x2:1,y2:0.8,
-                            onMouseDown:ctrOnMouseDown(xExtend),
+                            onMouseDown:ctrOnMouseDown(iExtend),
                             cursor:"col-resize",
                             stroke:"#FF000055"});
     var jSide = es("line", {...lineBoxMold, x1:0.2,y1:1, x2:0.8,y2:1,
-                            onMouseDown:ctrOnMouseDown(yExtend),
+                            onMouseDown:ctrOnMouseDown(jExtend),
                             cursor:"row-resize",
                             stroke:"#FF000055"});
     // Rotator
@@ -345,7 +346,7 @@ function Shape(mold) {
       if (k == "transform") {
         // transform is applied directly to the box
         setAttr(box, {transform: v});
-        // Then we adjust each controller position
+        // Adjust controllers' positions
         let [a,b,c,d,e,f] = v;
         let tl = transform(v, [0,0]);
         let tr = transform(v, [1,0]);
@@ -356,7 +357,11 @@ function Shape(mold) {
         setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
                                      tl[0]-w-5, tl[1]-w-5]});
         setAttr(iSide, {transform:v});
-        setAttr(jSide, {transform:v});}}}
+        setAttr(jSide, {transform:v});
+
+        // Change side control's cursor based on orientation
+        setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize" : "row-resize"});
+        setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize" : "row-resize"})}}}
 
   function modelCtor() {
     // Guarantees no mutation without going through updateFn
@@ -505,7 +510,7 @@ function Shape(mold) {
   panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false});}
 
 /* @TodoList
-   - Change side direction: invert and rotate sideway when needed
+   - Rotation is still not exactly right (skips around, when zoomed out)
    - Make the grid bigger, leave some scrolling space
    - Add "send-to-front/back"
    - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
