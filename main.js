@@ -1,5 +1,6 @@
 "use strict";
 let abs = Math.abs;
+/** Get angle from Ox to vector [dx,dy]*/
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
 var panZoom = null;  // A third-party svg pan-zoom thing
@@ -274,16 +275,12 @@ function Shape(mold) {
       else {m = [a,b, c*s,d*s, e,f]}
       model.set({transform: m});}
 
-    var rotationPivot;  // This gets set whenever the rotator is pressed
-    // @optimize: store original matrix & angle
+    var rotPivot, rotMatrix, rotAngle;  // set whenever the rotator is pressed
     function rotator() {
-      let [x,y] = mouseMgr.getPrevMousePos();
-      let [X,Y] = mouseMgr.getMousePos();  // mouse position in svg coordinate
-      let xform = model.get("transform");
-      let [ox,oy] = rotationPivot;
-      model.set({transform: translate(rotate(translate(xform, [-ox,-oy]),
-                                             (Math.atan2(Y-oy, X-ox) -
-                                              Math.atan2(y-oy, x-ox))),
+      let [x,y] = mouseMgr.getMousePos();  // mouse position in svg coordinate
+      let [ox,oy] = rotPivot;
+      model.set({transform: translate(rotate(translate(rotMatrix, [-ox,-oy]),
+                                             (Math.atan2(y-oy,x-ox) - rotAngle)),
                                       [ox,oy])})}
 
     // Freely changing i and j
@@ -303,10 +300,14 @@ function Shape(mold) {
     // Rotator
     var rotCtr = es("g", {onMouseDown:
                           (evt) => {
+                            ctrOnMouseDown(rotator)(evt)
                             // Let the pivot be at the center of the shape
                             let xform = model.get("transform");
-                            rotationPivot = transform(xform, [0.5,0.5]);
-                            ctrOnMouseDown(rotator)(evt)}},
+                            let [ox,oy] = transform(xform, [0.5,0.5]);
+                            let [x,y] = mouseMgr.getMousePos();
+                            rotPivot = [ox,oy];
+                            rotMatrix = xform;
+                            rotAngle = Math.atan2(y-oy, x-ox);}},
                     // dimension ~100x100
                     [es("path", {d:"M 75 25 A 50 50, 0, 1, 1, 25 75",
                                  stroke:"red", "stroke-width": 5,
