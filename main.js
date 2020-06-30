@@ -180,6 +180,7 @@ let boxMold = {...commonMold, tag:"rect",
 let cornerWidth = 20;
 let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
                   tag:"rect", stroke:"red"};
+let frameMold = {tag:"use", type:"frame", href:"#frame",};
 
 function serialize(shape) {return shape.getModel()}
 
@@ -192,19 +193,28 @@ function Shape(mold) {
   // Optionally pass in `data` for serialization purpose
   let that = this;  // Weird trick to make "this" work in private function
   // Calculating spawn location
-  let {tag, ...attrs} = {...mold};
-  let {x,y} = panZoom.getPan();
+  let {type, tag, ...attrs} = {...mold};
   let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
+  let {x,y} = panZoom.getPan();
+  let [dx,dy] = [x,y];
   let z = panZoom.getZoom();
   if (tag == "line") {
     if (!attrs.x1) {
-      [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [rx, ry, rx+100, ry+100]}}
+      let X = (-dx+100+rx)/z;
+      let Y = (-dy+100+ry)/z;
+      [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [X,Y, X+100, Y+100]}}
+
+  else if (type == "frame") {
+    let DEFAULT_SCALE = 1/3;  // xform will be figured out from here
+    attrs.transform = [D*DEFAULT_SCALE,0, 0,D*DEFAULT_SCALE,
+                       (-dx+100+rx)/z, (-dy+100+ry)/z]}
+
   else if (!attrs.transform) {
-    // panZoom's transform is: array V ➾ P(V) = zV+Δ (where Δ = [x,y])
-    // Substituting (V - Δ/z) for V skews that result to just be zV
-    let DEFAULT_SCALE = 100;
-    attrs.transform = [DEFAULT_SCALE,0, 0,DEFAULT_SCALE,
-                       (100-x+rx)/z, (100-y+ry)/z]}
+    // panZoom's transform (svg → screen): V ➾ P(V) = zV+Δ (where Δ = [dx,dy])
+    // Substituting (V - Δ/z + D/z) for V skews that result to zV+D (screen coord)
+    let DEFAULT_DIM = 100;
+    attrs.transform = [DEFAULT_DIM,0, 0,DEFAULT_DIM,
+                       (-dx+100+rx)/z, (-dy+100+ry)/z]}
 
   let shape = es(tag, attrs);
 
@@ -316,57 +326,71 @@ function Shape(mold) {
                                  stroke:"red", "stroke-width":5}),
                      es("line", {x1:"25", y1:"75", x2:"35", y2:"85",
                                  stroke:"red", "stroke-width":5})])
-    controls = es("g", {visibility: "hidden"},
+    controls = es("g", {visibility:"hidden"},
                   [iCtr, jCtr, iSide, jSide, rotCtr]);}
+
+  // Special for frame: content is the copy (of shape for now)
+  if (type == "frame") {
+    var content = es("g", {});
+  }
 
   function focus() {
     highlight();
     setAttr(controls, {visibility: "visible"});}
   that.focus = focus;
 
-  var updateFn;  // Special things to do when the model updates
-  if (tag == "line") {
-    updateFn = (k,v) => {
-      if (["x1", "y1", "x2", "y2"].includes(k)) {
-        // Changing the endpoints of the model also changes box
-        setAttr(box, {[k]: v});
-        // Then we change the nobs, too!
-        let V = v-cornerWidth/2;
-        switch (k) {
-        case "x1":
-          setAttr(endpoint1, {x: V}); break;
-        case "y1":
-          setAttr(endpoint1, {y: V}); break;
-        case "x2":
-          setAttr(endpoint2, {x: V}); break;
-        case "y2":
-          setAttr(endpoint2, {y: V}); break;}}}}
-  else {
-    // This function is in charge of modifying the controller's locations
-    updateFn = (k,v) => {
-      if (k == "transform") {
-        // transform is applied directly to the box
-        setAttr(box, {transform: v});
-        // Adjust controllers' positions
-        let [a,b,c,d,e,f] = v;
-        let tl = transform(v, [0,0]);
-        let tr = transform(v, [1,0]);
-        let bl = transform(v, [0,1]);
-        let w = cornerWidth / 2;
-        setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
-        setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
-        setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
-                                     tl[0]-w-5, tl[1]-w-5]});
-        setAttr(iSide, {transform:v});
-        setAttr(jSide, {transform:v});
-
-        // Change side control's cursor based on orientation
-        setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize" : "row-resize"});
-        setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize" : "row-resize"})}}}
-
   function modelCtor() {
     // Guarantees no mutation without going through updateFn
     var val = {};
+
+    var updateFn;  // Special things to do when the model updates
+    if (tag == "line") {
+      updateFn = (k,v) => {
+        if (["x1", "y1", "x2", "y2"].includes(k)) {
+          // Changing the endpoints of the model also changes box
+          setAttr(box, {[k]: v});
+          // Then we change the nobs, too!
+          let V = v-cornerWidth/2;
+          switch (k) {
+          case "x1":
+            setAttr(endpoint1, {x: V}); break;
+          case "y1":
+            setAttr(endpoint1, {y: V}); break;
+          case "x2":
+            setAttr(endpoint2, {x: V}); break;
+          case "y2":
+            setAttr(endpoint2, {y: V}); break;}}}}
+    else {
+      // This function is in charge of modifying the controller's locations
+      updateFn = (k,v) => {
+        if (k == "transform") {
+          // transform is applied directly to the box
+          setAttr(box, {transform: v});
+          // Adjust controllers' positions
+          let [a,b,c,d,e,f] = v;
+          let tl = transform(v, [0,0]);
+          let tr = transform(v, [1,0]);
+          let bl = transform(v, [0,1]);
+          let w = cornerWidth / 2;
+          setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
+          setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
+          setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
+                                       tl[0]-w-5, tl[1]-w-5]});
+          setAttr(iSide, {transform:v});
+          setAttr(jSide, {transform:v});
+
+          // Change side control's cursor based on orientation
+          setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize" : "row-resize"});
+          setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize" : "row-resize"})
+
+          // Special for frame: change xform based on this "surface-level" transform
+          if (type == "frame") {
+            let xform = [a/D,b/D, c/D,d/D, e,f];
+            val.xform = xform;
+            // DOM update: for both content and the axes
+            setAttr(content, {transform: xform});
+            setAttr(shape, {transform: xform});}}}}
+
     this.set = (obj, canUndo=true) => {
       // canUndo: is this an undoable command or not
       let oldValues = {};
@@ -381,10 +405,11 @@ function Shape(mold) {
 
     this.get = (k) => val[k];
     // Only returns copies: no mutation allowed!
-    this.getAll = () => {return {...val}};
+    function getAll () {return {...val}}
+    this.getAll = getAll;
 
     // Then we initialize the model, also mutating the DOM to match (not undoable)
-    this.set({ tag:tag, ...attrs}, false)}
+    this.set({tag:tag, ...attrs}, false)}
 
   let model = new modelCtor();
 
@@ -456,15 +481,17 @@ function Shape(mold) {
                 [es("rect", {width:100, height:100, fill:"none"}),
                  es("path", {d:"M 100 0 H 0 V 100",
                              fill:"none", stroke:"#777777", "stroke-width":2})]);
-  let frame = es("g", {id:"frame"},
+  let frameStroke = {"vector-effect": "non-scaling-stroke",
+                     fill:"transparent", "stroke-width":3};
+  let frame = es("g", {id:"frame", "vector-effect": "non-scaling-stroke"},
                  [// This is i
-                   es("path", {d:`M 0 0 H ${D}`, stroke:"red", "line-width":3}),
-                   es("path", {d:`M ${D-20} ${-20} L ${D} 0 L ${D-20} ${+20}`,
-                               stroke:"red", fill:"transparent", "line-width":3}),
+                   es("path", {...frameStroke, stroke:"red", d:`M 0 0 H ${D}`}),
+                   es("path", {...frameStroke, stroke:"red",
+                               d:`M ${D-20} ${-20} L ${D} 0 L ${D-20} ${+20}`,}),
                    // This is j
-                   es("path", {d:`M 0 0 V ${D}`, stroke:"green"}),
-                   es("path", {d:`M ${-20} ${D-20} L 0 ${D} L ${+20} ${D-20}`,
-                               stroke:"green", fill:"transparent", "line-width":3}),
+                   es("path", {...frameStroke, stroke:"green", d:`M 0 0 V ${D}`}),
+                   es("path", {...frameStroke, stroke:"green",
+                               d:`M ${-20} ${D-20} L 0 ${D} L ${+20} ${D-20}`}),
                  ]);
 
   let app = document.getElementById("app");
@@ -511,6 +538,8 @@ function Shape(mold) {
                  [et("Circle")]),
                e("button", {onClick: (evt) => {new Shape(lineMold).register()}},
                  [et("Line")]),
+               e("button", {onClick: (evt) => {new Shape(frameMold).register()}},
+                 [et("Frame")]),
 
                // Save to file
                e("button", {onClick:(evt) => saveDiagram()},
@@ -531,8 +560,9 @@ function Shape(mold) {
   panZoom.pan({x:20, y:20});}
 
 /* @TodoList
-   - Frame: add smaller frames
-   - Frame: Render echos
+   - Frame: add first-level echos
+   - Frame: add nested frames & echos
+   - Frame: allow changing levels
    - Add "send-to-front/back"
    - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
 */
