@@ -75,10 +75,10 @@ function undo() {
   redoStack.push(cmd);
   switch (cmd.action) {
   case "create":
-    cmd.shape.deregister(false);  // The shape is still there, just register it
+    cmd.shape.deregister();  // The shape is still there, just register it
     break;
   case "remove":
-    cmd.shape.reregister();
+    cmd.shape.register();
     break;
   case "edit":
     cmd.shape.setAttrsAuto(cmd.before);
@@ -92,10 +92,10 @@ function redo() {
   undoStack.push(cmd);
   switch (cmd.action) {
   case "create":
-    cmd.shape.reregister();  // The shape is still there, just register it
+    cmd.shape.register();  // The shape is still there, just register it
     break;
   case "remove":
-    cmd.shape.deregister(false);
+    cmd.shape.deregister();
     break;
   case "edit":
     cmd.shape.setAttrsAuto(cmd.after);
@@ -138,7 +138,10 @@ let keymap = {"ctrl-z": tryUndo,
               "ArrowLeft": (evt)  => arrowMove([-10,0]),
               "Delete": () => {
                 let focused = state.getFocused();
-                if (focused) {focused.deregister()}},}
+                if (focused) {
+                  let shape = focused;
+                  shape.deregister();
+                  issueCmd({action:"remove", shape:shape})}},}
 window.onkeydown = (evt) => {
   let keys = [];
   if (evt.ctrlKey) {keys.push("ctrl")}
@@ -184,8 +187,8 @@ let frameMold = {tag:"use", type:"frame", href:"#frame",};
 
 function serialize(shape) {return shape.getModel()}
 
-var shapeLayer; var controlLayer; var boxLayer;
-function update(obj, k, f) {obj.set({[k]: f(obj.get(k))})}
+var shapeLayer, controlLayer, boxLayer;
+function update(obj, k, f) {obj.set({ [k]: f(obj.get(k)) })}
 
 function Shape(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
@@ -216,7 +219,13 @@ function Shape(mold) {
     attrs.transform = [DEFAULT_DIM,0, 0,DEFAULT_DIM,
                        (-dx+100+rx)/z, (-dy+100+ry)/z]}
 
-  let shape = es(tag, attrs);
+  let views = [];  // When we change the model, these DOM elements are changed too
+  function newView() {
+    let el = es(tag, attrs);
+    views.push(el);
+    return el;}
+  that.newView = newView;
+  newView();  // We have at least one view
 
   var move;
   if (tag == "line") {
@@ -332,7 +341,10 @@ function Shape(mold) {
   // Special for frame: content is the copy (of shape for now)
   if (type == "frame") {
     var content = es("g", {});
-  }
+    for (let S of shapeList) {
+      if (S.getActive()) {
+        let s = S.newView();
+        content.appendChild(s);}}}
 
   function focus() {
     highlight();
@@ -389,14 +401,14 @@ function Shape(mold) {
             val.xform = xform;
             // DOM update: for both content and the axes
             setAttr(content, {transform: xform});
-            setAttr(shape, {transform: xform});}}}}
+            for (let s of views) {setAttr(s, {transform: xform})}}}}}
 
     this.set = (obj, canUndo=true) => {
       // canUndo: is this an undoable command or not
       let oldValues = {};
       for (let [k,v] of Object.entries(obj)) {
         oldValues[k] = val[k];
-        setAttr(shape, {[k]: v});
+        for (let s of views) {setAttr(s, {[k]: v})}
         updateFn(k, v);
         val[k] = v;}
       if (canUndo)
@@ -427,7 +439,7 @@ function Shape(mold) {
       controlChanged = true;  // Switched to a new control
       evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
       mouseMgr.handle(evt);
-      // The same shape might have different "controllers", so we bind the moveFn regardless
+      // One shape might have different controls, so we bind the moveFn regardless
       moveFn = fn;}}
 
   function respondToDrag(evt) {console.assert(moveFn);
@@ -442,31 +454,23 @@ function Shape(mold) {
   var active = false;
   that.getActive = () => active;
 
-  let reregister = () => {// Like "register", but issued by undo/redo
+  let register = () => {
     active = true;
     // We add the view to the DOM
-    shapeLayer.appendChild(shape);
+    for (let el of views) {shapeLayer.appendChild(el)}
     controlLayer.appendChild(controls);
-    boxLayer.appendChild(box);}
-  that.reregister = reregister.bind(that);
-
-  let register = () => {
-    reregister()
-    // Add to the undo stack
-    issueCmd({action: "create", shape: that})}
-  shapeList.push(that);
+    boxLayer.appendChild(box);
+    if (type == "frame") {shapeLayer.appendChild(content)}}
   that.register = register.bind(that);
 
-  let deregister = (doesIssue=true) => {
+  let deregister = () => {
     // remove from DOM, the shape's still around for undo/redo
     state.unfocus(that);
     active = false;
-    shapeLayer.removeChild(shape);
+    for (let el of views) {shapeLayer.removeChild(el)}
     controlLayer.removeChild(controls);
     boxLayer.removeChild(box);
-    if (doesIssue) {
-      // Add to the undo stack
-      issueCmd({action: "remove", shape: that})}}
+    if (type == "frame") {shapeLayer.removeChild(content)}}
   that.deregister = deregister.bind(that);
 
   // Technically this returns only the copy of the model
@@ -530,15 +534,21 @@ function Shape(mold) {
                         // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
                         shapeLayer, boxLayer, controlLayer])]);
 
+  function newShape(mold) {
+    let s = new Shape(mold);
+    s.register();
+    issueCmd({action:"create", shape:s});
+    if (mold.type != "frame") {shapeList.push(s)}}
+
   let UI = e("div", {id:"UI"},
              [// Shape creation
-               e("button", {onClick: (evt) => {new Shape(rectMold).register()}},
+               e("button", {onClick: (evt) => {newShape(rectMold)}},
                  [et("Rectangle")]),
-               e("button", {onClick: (evt) => {new Shape(circMold).register()}},
+               e("button", {onClick: (evt) => {newShape(circMold)}},
                  [et("Circle")]),
-               e("button", {onClick: (evt) => {new Shape(lineMold).register()}},
+               e("button", {onClick: (evt) => {newShape(lineMold)}},
                  [et("Line")]),
-               e("button", {onClick: (evt) => {new Shape(frameMold).register()}},
+               e("button", {onClick: (evt) => {newShape(frameMold)}},
                  [et("Frame")]),
 
                // Save to file
@@ -559,7 +569,8 @@ function Shape(mold) {
                                 fit:false, center:false});
   panZoom.pan({x:20, y:20});}
 
-/* @TodoList
+/* @Todo
+   - Remove box highlight for focused shapes
    - Frame: add first-level echos
    - Frame: add nested frames & echos
    - Frame: allow changing levels
