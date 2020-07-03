@@ -1,6 +1,7 @@
 "use strict";
+let log = console.log;
 let abs = Math.abs;
-/** Get angle from Ox to vector [dx,dy]*/
+let entries = Object.entries;
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
 var panZoom = null;  // A third-party svg pan-zoom thing
@@ -29,16 +30,16 @@ function mouseOffset() {
   return [x2-x1, y2-y1]}
 
 let mouseMgr = new MouseManager();
-let shapeList = [];  // Keep track of all added shapes (including the ones removed)
+let shapeList = [];  // Keep track of all added shape models (inactives included)
+let frameList = [];  // Keep track of all frames (inactives included)
 
-let log = console.log;
 // Store them, so they won't change
 let [W, H] = [window.innerWidth, window.innerHeight];
 let D = Math.min(W,H) - (Math.min(W,H) % 100);
 
 // Undo/Redo stuff
 // "undoStack" and "redoStack" are lists of commands
-// Commands are like {action: "remove"/"create"/"edit", shape: <shape ptr>, controller: <arbitrary string>, before: <keys-vals before>, after: <keys-vals after>}
+// Commands are like {action: "remove"/"create"/"edit", shape: <shape ptr>, before: <keys-vals before>, after: <keys-vals after>}
 // The latter half of the keys are only needed for edits
 // Deleted shapes linger around, since they're needed for undo
 let undoStack = [];
@@ -81,7 +82,7 @@ function undo() {
     cmd.shape.register();
     break;
   case "edit":
-    cmd.shape.setAttrsAuto(cmd.before);
+    cmd.shape.set(cmd.before);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -98,7 +99,7 @@ function redo() {
     cmd.shape.deregister();
     break;
   case "edit":
-    cmd.shape.setAttrsAuto(cmd.after);
+    cmd.shape.set(cmd.after);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -187,14 +188,41 @@ let frameMold = {tag:"use", type:"frame", href:"#frame",};
 
 function serialize(shape) {return shape.getModel()}
 
-var shapeLayer, controlLayer, boxLayer;
-function update(obj, k, f) {obj.set({ [k]: f(obj.get(k)) })}
+var echoLayer, shapeLayer, controlLayer, boxLayer;
+
+/** A model is a simple locked dictionary, useful for automatic serialization
+    Guarantees mutations have to get through updateFn */
+function Model(initData={}, updateFn=(k,v) => {}) {
+  let that = this;  // Weird trick to make "this" work in private function
+  var val = {};
+
+  var updateFn = updateFn;  // Special thing to do when the model updates
+  that.getUpdateFn = () => {return updateFn}
+  that.augmentUpdateFn = (fn) => {
+    let oldUpdateFn = updateFn;
+    updateFn = (k,v) => {oldUpdateFn(k,v); fn(k,v);}}
+
+  function set(obj) {
+    for (let [k,v] of entries(obj)) {
+      updateFn(k, v);
+      val[k] = v;}}
+  that.set = set.bind(that);
+
+  function get(k) {return val[k]}
+  that.get = get.bind(that);
+  // Only returns copies
+  function getAll() {return {...val}}
+  that.getAll = getAll.bind(that);
+
+  // Initialize the model, which triggers the effects specified in "updateFn"
+  that.set(initData)}
 
 function Shape(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
   // Optionally pass in `data` for serialization purpose
   let that = this;  // Weird trick to make "this" work in private function
+  var model;
   // Calculating spawn location
   let {type, tag, ...attrs} = {...mold};
   let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
@@ -219,24 +247,29 @@ function Shape(mold) {
     attrs.transform = [DEFAULT_DIM,0, 0,DEFAULT_DIM,
                        (-dx+100+rx)/z, (-dy+100+ry)/z]}
 
-  let views = [];  // When we change the model, these DOM elements are changed too
-  function newView() {
-    let el = es(tag, attrs);
-    views.push(el);
+  let views = [];  // Views are {parent, el} pairs
+  that.getViews = () => views;
+  /** Make a DOM element whose attribute is linked to the model
+      AFAIK This is not supposed to be used with frames */
+  function newView(parent) {
+    let el = es(tag, model.getAll());
+    // Frame views don't obey the model
+    if (type == "frame") {setAttr(el, {transform: model.get("xform")})}
+    views.push({parent:parent, el:el});
     return el;}
   that.newView = newView;
-  newView();  // We have at least one view
 
   var move;
   if (tag == "line") {
     move = ([dx,dy]) => {
       let {x1,y1,x2,y2} = model.getAll();
-      model.set({x1:x1+dx, y1:y1+dy,
-                 x2:x2+dx, y2:y2+dy});}}
+      setUndoable({x1:x1+dx, y1:y1+dy,
+                   x2:x2+dx, y2:y2+dy});}}
   else {
     move = ([dx,dy]) => {
-      update(model, "transform", (m) => translate(m, [dx,dy]))}}
-  this.move = move;
+      let m = model.get("transform");
+      setUndoable({transform: translate(m, [dx,dy])});}}
+  that.move = move;
 
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
   var bMold = (tag == "line") ? lineBoxMold : boxMold;
@@ -256,10 +289,10 @@ function Shape(mold) {
   if (tag == "line") {
     let endpoint1Md = ([dx,dy]) => {
       let {x1,y1} = model.getAll();
-      model.set({x1: x1+dx, y1: y1+dy});}
+      setUndoable({x1: x1+dx, y1: y1+dy});}
     let endpoint2Md = ([dx,dy]) => {
       let {x2,y2} = model.getAll();
-      model.set({x2:x2+dx, y2:y2+dy});}
+      setUndoable({x2:x2+dx, y2:y2+dy});}
     var endpoint1 = es(ctag, {...cornerMold,
                               onMouseDown:ctrOnMouseDown(endpoint1Md)});
     var endpoint2 = es(ctag, {...cornerMold,
@@ -269,11 +302,11 @@ function Shape(mold) {
   else {
     function iMove([dx,dy]) {
       let [a,b,c,d,e,f] = model.get("transform");
-      model.set({transform: [a+dx,b+dy, c,d, e,f]})}
+      setUndoable({transform: [a+dx,b+dy, c,d, e,f]})}
 
     function jMove([dx,dy]) {
       let [a,b,c,d,e,f] = model.get("transform");
-      model.set({transform: [a,b, c+dx,d+dy, e,f]})}
+      setUndoable({transform: [a,b, c+dx,d+dy, e,f]})}
 
     function iExtend([dx,dy], evt) {
       // If "shift" is pressed, maintain ratio
@@ -284,7 +317,7 @@ function Shape(mold) {
       var m;
       if (evt.shiftKey) {m = [a*s,b*s, c*s,d*s, e,f];}
       else {m = [a*s,b*s, c,d, e,f]}
-      model.set({transform: m});}
+      setUndoable({transform: m});}
 
     function jExtend([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
@@ -292,15 +325,15 @@ function Shape(mold) {
       var m;
       if (evt.shiftKey) {m = [a*s,b*s, c*s,d*s, e,f]}
       else {m = [a,b, c*s,d*s, e,f]}
-      model.set({transform: m});}
+      setUndoable({transform: m});}
 
     var rotPivot, rotMatrix, rotAngle;  // set whenever the rotator is pressed
     function rotator() {
       let [x,y] = mouseMgr.getMousePos();  // mouse position in svg coordinate
       let [ox,oy] = rotPivot;
-      model.set({transform: translate(rotate(translate(rotMatrix, [-ox,-oy]),
-                                             (Math.atan2(y-oy,x-ox) - rotAngle)),
-                                      [ox,oy])})}
+      setUndoable({transform: translate(rotate(translate(rotMatrix, [-ox,-oy]),
+                                               (Math.atan2(y-oy,x-ox) - rotAngle)),
+                                        [ox,oy])})}
 
     // Freely changing i and j
     var iCtr = es(ctag, {...cornerMold, x:0.95,  y:-0.05,
@@ -338,92 +371,75 @@ function Shape(mold) {
     controls = es("g", {visibility:"hidden"},
                   [iCtr, jCtr, iSide, jSide, rotCtr]);}
 
-  // Special for frame: content is the copy (of shape for now)
-  if (type == "frame") {
-    var content = es("g", {});
-    for (let S of shapeList) {
-      if (S.getActive()) {
-        let s = S.newView();
-        content.appendChild(s);}}}
-
   function focus() {
     highlight();
     setAttr(controls, {visibility: "visible"});}
   that.focus = focus;
 
-  function modelCtor() {
-    // Guarantees no mutation without going through updateFn
-    var val = {};
+  var updateFn;
+  if (tag == "line") {
+    updateFn = (k,v) => {
+      for (let {el} of views) {setAttr(el, {[k]: v})}
+      if (["x1", "y1", "x2", "y2"].includes(k)) {
+        // Changing the endpoints of the model also changes box
+        setAttr(box, {[k]: v});
+        // Then we change the nobs, too!
+        let V = v-cornerWidth/2;
+        switch (k) {
+        case "x1":
+          setAttr(endpoint1, {x: V}); break;
+        case "y1":
+          setAttr(endpoint1, {y: V}); break;
+        case "x2":
+          setAttr(endpoint2, {x: V}); break;
+        case "y2":
+          setAttr(endpoint2, {y: V}); break;}}}}
+  else {
+    // This function is in charge of modifying the controller's locations
+    updateFn = (k,v) => {
+      for (let {el} of views) {setAttr(el, {[k]: v})}
+      if (k == "transform") {
+        // transform is applied directly to the box
+        setAttr(box, {transform: v});
+        // Adjust controllers' positions
+        let [a,b,c,d,e,f] = v;
+        let tl = transform(v, [0,0]);
+        let tr = transform(v, [1,0]);
+        let bl = transform(v, [0,1]);
+        let w = cornerWidth / 2;
+        setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
+        setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
+        setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
+                                     tl[0]-w-5, tl[1]-w-5]});
+        setAttr(iSide, {transform:v});
+        setAttr(jSide, {transform:v});
 
-    var updateFn;  // Special things to do when the model updates
-    if (tag == "line") {
-      updateFn = (k,v) => {
-        if (["x1", "y1", "x2", "y2"].includes(k)) {
-          // Changing the endpoints of the model also changes box
-          setAttr(box, {[k]: v});
-          // Then we change the nobs, too!
-          let V = v-cornerWidth/2;
-          switch (k) {
-          case "x1":
-            setAttr(endpoint1, {x: V}); break;
-          case "y1":
-            setAttr(endpoint1, {y: V}); break;
-          case "x2":
-            setAttr(endpoint2, {x: V}); break;
-          case "y2":
-            setAttr(endpoint2, {y: V}); break;}}}}
-    else {
-      // This function is in charge of modifying the controller's locations
-      updateFn = (k,v) => {
-        if (k == "transform") {
-          // transform is applied directly to the box
-          setAttr(box, {transform: v});
-          // Adjust controllers' positions
-          let [a,b,c,d,e,f] = v;
-          let tl = transform(v, [0,0]);
-          let tr = transform(v, [1,0]);
-          let bl = transform(v, [0,1]);
-          let w = cornerWidth / 2;
-          setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
-          setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
-          setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
-                                       tl[0]-w-5, tl[1]-w-5]});
-          setAttr(iSide, {transform:v});
-          setAttr(jSide, {transform:v});
+        // Change side control's cursor based on orientation
+        setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize":"row-resize"});
+        setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize":"row-resize"});}}}
 
-          // Change side control's cursor based on orientation
-          setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize" : "row-resize"});
-          setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize" : "row-resize"})
+  model = new Model({type:type, tag:tag, ...attrs}, updateFn);
+  that.model = model;
 
-          // Special for frame: change xform based on this "surface-level" transform
-          if (type == "frame") {
-            let xform = [a/D,b/D, c/D,d/D, e,f];
-            val.xform = xform;
-            // DOM update: for both content and the axes
-            setAttr(content, {transform: xform});
-            for (let s of views) {setAttr(s, {transform: xform})}}}}}
+  // Ugly hack for frame: change xform based on this "surface-level" transform
+  // Since we don't have access to the "inside value", we can't change another value based on the result of one
+  if (type == "frame") {
+    model.augmentUpdateFn((k,v) => {
+      if (k == "transform") {
+        let [a,b, c,d, e,f] = v;
+        let xform = [a/D,b/D, c/D,d/D, e,f];
+        model.set({xform:xform});
+        // DOM update: for the axes
+        for (let {el} of views) {setAttr(el, {transform: xform})}}})
+    // Trigger the change
+    model.set({transform: model.get("transform")});}
 
-    this.set = (obj, canUndo=true) => {
-      // canUndo: is this an undoable command or not
-      let oldValues = {};
-      for (let [k,v] of Object.entries(obj)) {
-        oldValues[k] = val[k];
-        for (let s of views) {setAttr(s, {[k]: v})}
-        updateFn(k, v);
-        val[k] = v;}
-      if (canUndo)
-        issueCmd({action:"edit", shape:that,
-                  before:oldValues, after:obj})}
-
-    this.get = (k) => val[k];
-    // Only returns copies: no mutation allowed!
-    function getAll () {return {...val}}
-    this.getAll = getAll;
-
-    // Then we initialize the model, also mutating the DOM to match (not undoable)
-    this.set({tag:tag, ...attrs}, false)}
-
-  let model = new modelCtor();
+  function setUndoable(attrs) {
+    let before = {};
+    for (let k in attrs) {before[k] = model.get(k)}
+    model.set(attrs);
+    issueCmd({action:"edit", shape:that,
+              before:before, after:attrs});}
 
   function unfocus() {
     unhighlight();
@@ -452,32 +468,33 @@ function Shape(mold) {
 
   // This flag is for serialization
   var active = false;
-  that.getActive = () => active;
+  that.isActive = () => active;
 
-  let register = () => {
+  function register() {
     active = true;
-    // We add the view to the DOM
-    for (let el of views) {shapeLayer.appendChild(el)}
+    // Add the views to the DOM
+    // We need at least one view
+    if (views.length == 0) {newView(shapeLayer)}
+    for (let {parent,el} of views) {parent.appendChild(el)}
     controlLayer.appendChild(controls);
-    boxLayer.appendChild(box);
-    if (type == "frame") {shapeLayer.appendChild(content)}}
+    boxLayer.appendChild(box);}
   that.register = register.bind(that);
 
-  let deregister = () => {
-    // remove from DOM, the shape's still around for undo/redo
+  function deregister() {
+    // Remove from DOM, the shape's still around for undo/redo
     state.unfocus(that);
     active = false;
-    for (let el of views) {shapeLayer.removeChild(el)}
-    controlLayer.removeChild(controls);
-    boxLayer.removeChild(box);
-    if (type == "frame") {shapeLayer.removeChild(content)}}
+    for (let {el} of views) {el.remove()}
+    controls.remove();
+    box.remove()}
   that.deregister = deregister.bind(that);
 
   // Technically this returns only the copy of the model
   that.getModel = () => model.getAll();
 
-  // Emergency hole to undo/redo attribute (note: NOT undoable)
-  that.setAttrsAuto = (attrs) => model.set(attrs, false)}
+  // Emergency hole to undo/redo attribute
+  function set(attrs) {model.set(attrs)}
+  that.set = set;}
 
 {// The DOM
   let tile = es("pattern", {id:"tile",
@@ -499,7 +516,8 @@ function Shape(mold) {
                  ]);
 
   let app = document.getElementById("app");
-  // The three SVG Layers
+  // The SVG Layers
+  echoLayer = es("g", {id:"echoes"});
   shapeLayer = es("g", {id:"shapes"});
   controlLayer = es("g", {id:"controls"});
   boxLayer = es("g", {id:"boxes"});
@@ -531,14 +549,31 @@ function Shape(mold) {
                                     fill:"url(#tile)"}),
                         // The frame
                         es("use", {id:"the-frame", href:"#frame"}),
-                        // Due to event propagation, events that aren't handled by any shape-group will be handled by the surface
-                        shapeLayer, boxLayer, controlLayer])]);
+                        // Due to event propagation, events not handled by any shape will be handled by the surface
+                        echoLayer, shapeLayer, boxLayer, controlLayer])]);
 
   function newShape(mold) {
     let s = new Shape(mold);
     s.register();
-    issueCmd({action:"create", shape:s});
-    if (mold.type != "frame") {shapeList.push(s)}}
+    if (mold.type == "frame") {
+      // Tie the frame transform to an element
+      let el = es("g", {}, []);
+      echoLayer.appendChild(el);
+      s.model.augmentUpdateFn((k,v) => {
+        if (k == "xform") {setAttr(el, {transform:v})}});
+      // Trigger the transform
+      s.model.set({xform: s.model.get("xform")});
+      for (let shape of shapeList) {
+        let view = shape.newView(el);
+        el.appendChild(view);}
+      frameList.push(el);}
+
+    else {// Not-frame
+      for (let frame of frameList) {
+        let view = s.newView(frame);
+        frame.appendChild(view);}
+      shapeList.push(s);}
+    issueCmd({action:"create", shape:s});}
 
   let UI = e("div", {id:"UI"},
              [// Shape creation
@@ -559,8 +594,7 @@ function Shape(mold) {
                  [et("Load")]),
 
                // Undo/Redo buttons
-               undoBtn, redoBtn
-             ]);
+               undoBtn, redoBtn]);
   app.appendChild(UI);
   app.appendChild(svg_el);
   // SVG panzoom only works with whole SVG elements
@@ -570,10 +604,16 @@ function Shape(mold) {
   panZoom.pan({x:20, y:20});}
 
 /* @Todo
+   + Frame:
+   - add first-level echos
+   - add nested frames & echos
+   - allow changing levels
+
+   + Other bullshit:
+   - Distinguish the-frame from the other frames
+   - Add box for frames
    - Remove box highlight for focused shapes
-   - Frame: add first-level echos
-   - Frame: add nested frames & echos
-   - Frame: allow changing levels
    - Add "send-to-front/back"
    - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
+   - Add copy/paste
 */
