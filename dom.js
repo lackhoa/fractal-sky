@@ -15,16 +15,20 @@ function setAttr(el, attrs) {
   return el;}
 
 // Element-creation functions
+let SVG_NS = "http://www.w3.org/2000/svg";
 function e(tag, attrs={}, children=[]) {
   // "attrs.tag" holds the type of the element
   let ns = attrs.xmlns || "http://www.w3.org/1999/xhtml";
   let el = document.createElementNS(ns, tag);
-  setAttr(el, attrs);
+  // The "xmlns" attribute drives me insane, so I'll only set it on SVG
+  var Attrs = {...attrs};
+  if ((attrs.xmlns == SVG_NS) && (tag != "svg")) {
+    delete Attrs.xmlns}
+  setAttr(el, Attrs);
   for (let c of children) {el.appendChild(c);};
   return el;}
 
 // Create svg element
-let SVG_NS = "http://www.w3.org/2000/svg";
 function es(tag, attrs={}, children=[]) {
   return e(tag, {...attrs, xmlns:SVG_NS}, children);}
 

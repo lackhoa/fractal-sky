@@ -84,7 +84,7 @@ function undo() {
     cmd.shape.register();
     break;
   case "edit":
-    cmd.shape.set(cmd.before);
+    cmd.shape.model.set(cmd.before);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -101,7 +101,7 @@ function redo() {
     cmd.shape.deregister();
     break;
   case "edit":
-    cmd.shape.set(cmd.after);
+    cmd.shape.model.set(cmd.after);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -190,7 +190,7 @@ let frameMold = {tag:"use", type:"frame", href:"#frame",};
 
 function serialize(shape) {return shape.getModel()}
 
-var root, controlLayer, boxLayer;
+var root, controlLayer, boxLayer, axesLayer;
 
 /** A model is a simple locked dictionary, useful for automatic serialization
     Guarantees mutations have to get through updateFn */
@@ -199,7 +199,7 @@ function Model(initData={}, updateFn=(k,v) => {}) {
   var val = {};
 
   var updateFn = updateFn;  // Special thing to do when the model updates
-  that.getUpdateFn = () => {return updateFn}
+  that.getUpdateFn = () => updateFn;
   that.augmentUpdateFn = (fn) => {
     let oldUpdateFn = updateFn;
     updateFn = (k,v) => {oldUpdateFn(k,v); fn(k,v);}}
@@ -218,6 +218,9 @@ function Model(initData={}, updateFn=(k,v) => {}) {
 
   // Initialize the model, which triggers the effects specified in "updateFn"
   that.set(initData)}
+function triggerUpdate(model, keys) {
+  for (let key of keys) {
+    model.set({[key]: model.get(key)})}}
 
 function Shape(mold) {
   // Creates and adds a group containing the shape and its controls from a mold
@@ -253,11 +256,30 @@ function Shape(mold) {
   that.getViews = () => views;
   /** Make a DOM element whose attribute is linked to the model
    * AFAIK This is not supposed to be used with frames */
-  function newView(parent) {
-    let el = es(tag, model.getAll());
-    views.push({parent:parent, el:el});
-    parent.appendChild(el);
-    return el;}
+  var newView;
+  if (type == "frame") {
+    /** Returns a <g> element whose transform is synced with the given frame
+     ** If depth > 0, recurse down */
+    newView = (parent, depth) => {
+      let el = es("g", {class:"frame",
+                        transform:model.get("xform")},
+                  [es("g", {class:"frame-shapes"})]);
+      // A frame needs its shapes
+      for (let shape of shapeList) {
+        shape.newView( frameShapes(el) )}
+      // If this is a branch: make a forest of nodes of the depth level
+      if (depth > 0) {
+        el.appendChild( makeLayer(depth-1) );}
+
+      views.push({parent:parent, el:el});
+      parent.appendChild(el);
+      return el;}}
+  else {
+    newView = (parent) => {
+      let el = es(tag, model.getAll());
+      views.push({parent:parent, el:el});
+      parent.appendChild(el);
+      return el;}}
   that.newView = newView;
 
   var move;
@@ -377,10 +399,14 @@ function Shape(mold) {
     setAttr(controls, {visibility: "visible"});}
   that.focus = focus;
 
+  if (type == "frame") {
+    var axes = es(tag, attrs);}
+
+  // Come about to making the model
   var updateFn;
   if (tag == "line") {
     updateFn = (k,v) => {
-      for (let {el} of views) {setAttr(el, {[k]: v})}
+      for (let {el} of views) { setAttr(el, {[k]: v}) }
       if (["x1", "y1", "x2", "y2"].includes(k)) {
         // Changing the endpoints of the model also changes box
         setAttr(box, {[k]: v});
@@ -398,7 +424,8 @@ function Shape(mold) {
   else {
     // This function is in charge of modifying the controller's locations
     updateFn = (k,v) => {
-      for (let {el} of views) {setAttr(el, {[k]: v})}
+      for (let {el} of views) {
+        setAttr(el, {[k]: v})}
       if (k == "transform") {
         // transform is applied directly to the box
         setAttr(box, {transform: v});
@@ -417,7 +444,11 @@ function Shape(mold) {
 
         // Change side control's cursor based on orientation
         setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize":"row-resize"});
-        setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize":"row-resize"});}}}
+        setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize":"row-resize"});
+
+        // Frames have an additional thing to take care of: transform
+        if (type == "frame") {
+          setAttr(axes, {transform:v})}}}}
 
   model = new Model({type:type, tag:tag, ...attrs}, updateFn);
   that.model = model;
@@ -429,9 +460,11 @@ function Shape(mold) {
       if (k == "transform") {
         let [a,b, c,d, e,f] = v;
         let xform = [a/D,b/D, c/D,d/D, e,f];
-        model.set({xform:xform});}})
+        model.set({xform:xform});  // Store this value in the model
+        for (let {el} of views) {
+          setAttr(el, {transform:xform})}}})
     // Trigger the change
-    model.set({transform: model.get("transform")});}
+    triggerUpdate(model, ["transform"]);}
 
   function setUndoable(attrs) {
     let before = {};
@@ -473,9 +506,12 @@ function Shape(mold) {
   function register() {
     active = true;
     // Add the views & controls to the DOM
-    for (let {parent,el} of views) { parent.appendChild(el) }
+    for (let {parent,el} of views) {
+      parent.appendChild(el)}
     controlLayer.appendChild(controls);
-    boxLayer.appendChild(box);}
+    boxLayer.appendChild(box);
+    if (type == "frame") {
+      axesLayer.appendChild(axes)}}
   that.register = register.bind(that);
 
   function deregister() {
@@ -484,7 +520,8 @@ function Shape(mold) {
     active = false;
     for (let {el} of views) {el.remove()}
     controls.remove();
-    box.remove()}
+    box.remove();
+    if (type == "frame") { axes.remove() }}
   that.deregister = deregister.bind(that);
 
   // Technically this returns only the copy of the model
@@ -496,32 +533,12 @@ function frameNested(frame) {return frame.children[1]}
 function isLeaf(frame) {
   return (frame.getElementsByClassName("frame-nested").length == 0);}
 
-/** Returns a <g> element whose transform is synced with the given frame
- ** If depth > 0, recurse down */
-function frameEl(frame, depth) {
-  let el = es("g", {"class":"frame"},
-              [es("g", {"class":"frame-shapes"})]);
-  frame.model.augmentUpdateFn((k,v) => {
-    if (k == "xform") { setAttr(el, {transform:v}) }});
-  // Initialize the transform
-  let xform = frame.model.get("xform");
-  setAttr(el, {transform: xform});
-  // A frame needs its shapes
-  for (let shape of shapeList) {
-    shape.newView( frameShapes(el) )}
-  // If this is a branch: make a forest of nodes of the depth level
-  if (depth > 0) {
-    el.appendChild( makeLayer(depth-1) );}
-  return el;}
-
 /** Make frames of the passed depth, then put them to a group */
 function makeLayer(depth) {
-  let fs = [];
+  let g = es("g", {class:"frame-nested"});
   for (let frame of frameList) {
     if (frame.isActive()) {
-      fs.push( frameEl(frame, depth) )}}
-  let g = es("g", {"class":"frame-nested"});
-  for (let frame of fs) { g.appendChild(frame) }
+      frame.newView(g, depth)}}
   return g;}
 
 // A layer is list of frames
@@ -578,9 +595,9 @@ function incDepth() {
 
   let app = document.getElementById("app");
   // The SVG Layers: also the root frame, with depth of 1 at first
-  root = es("g", {id:"root", "class":"frame", transform:idMatrix},
-            [es("g", {"class":"frame-shapes"}),
-             es("g", {"class":"frame-nested"})]);
+  root = es("g", {id:"root", class:"frame", transform:idMatrix},
+            [es("g", {class:"frame-shapes"}),
+             es("g", {class:"frame-nested"})]);
   controlLayer = es("g", {id:"controls"});
   boxLayer = es("g", {id:"boxes"});
   // The whole diagram
@@ -592,10 +609,11 @@ function incDepth() {
       // Cancel bubble, so svg won't get pan/zoom event
       evt.cancelBubble = true;}}
 
-  let axesLayer = es("g", {id:"axes"},
-                     [// The identity frame (decoration)
-                       es("use", {id:"the-frame", href:"#frame",
-                                  transform:[D,0, 0,D, 0,0]})])
+  // This layer holds all the axes, so we can turn them all on/off
+  axesLayer = es("g", {id:"axes"},
+                 [// The identity frame (decoration)
+                   es("use", {id:"the-frame", href:"#frame",
+                              transform:[D,0, 0,D, 0,0]})])
 
   let svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
                   // "W+1" and "H+1" is to show the grid at the border
@@ -619,22 +637,20 @@ function incDepth() {
 
   function newShape(mold) {
     let s = new Shape(mold);
-    s.register();
+    s.register();  // Put all the control stuff in the DOM
     let layers = getLayers();
     if (mold.type == "frame") {
-      // Frame views are placed in a special place: the axes layer
-      s.newView(axesLayer);
-      // Add the frame in: note that we include this frame in the frameList first, do that it will include itself
+      // Include this frame in the frameList first, so it will include itself
       frameList.push(s);
       if (frameList.length == 1) {// If the frame list was empty before
-        frameNested(root).appendChild(frameEl(s, treeDepth-1))}
+        s.newView(frameNested(root), treeDepth-1)}
       else {
         var depth = 0;
         // Exclude the last item
         for (let layer of layers.slice(0,-1)) {
           for (let frame of layer) {
             assert(frame.getAttribute("class") == "frame");
-            frameNested(frame).appendChild( frameEl(s, treeDepth-depth-1) );}
+            s.newView(frameNested(frame), treeDepth-depth-1);}
           depth++;}}}
 
     else {// None-frames
@@ -673,9 +689,7 @@ function incDepth() {
   panZoom.pan({x:20, y:20});}
 
 /* @Todo
-   - Deleting frames doesn't work: because the view doesn't include echos
    - Undo is broken
-   - Sometimes the shapes are outside frame-shapes
    - Allow changing levels arbitrarily
    - Distinguish the-frame from the other frames
    - Add box for frames
