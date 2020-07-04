@@ -507,21 +507,22 @@ function frameEl(frame, depth) {
   let xform = frame.model.get("xform");
   setAttr(el, {transform: xform});
   // A frame needs its shapes
-  for (let shape of shapeList) { shape.newView(el) }
+  for (let shape of shapeList) {
+    shape.newView( frameShapes(el) )}
   // If this is a branch: make a forest of nodes of the depth level
-    if (depth > 0) {
-      let g = es("g", {"class":"frame-nested"});
-      let layer = makeLayer(depth-1);
-      for (let frame of layer) {g.appendChild(frame)}
-      el.appendChild(g);}
+  if (depth > 0) {
+    el.appendChild( makeLayer(depth-1) );}
   return el;}
 
-/** Make frames of the passed depth */
+/** Make frames of the passed depth, then put them to a group */
 function makeLayer(depth) {
-  let res = [];
+  let fs = [];
   for (let frame of frameList) {
-    res.push( frameEl(frame, depth) )}
-  return res;}
+    if (frame.isActive()) {
+      fs.push( frameEl(frame, depth) )}}
+  let g = es("g", {"class":"frame-nested"});
+  for (let frame of fs) { g.appendChild(frame) }
+  return g;}
 
 // A layer is list of frames
 // @Fix: still infinite loop! When there is a nested frame
@@ -547,11 +548,12 @@ function getLayers() {
   return res;}
 
 /** Increment the current frame count */
-function incEcho() {
+function incDepth() {
   let layers = getLayers();
   let leaves = layers[layers.length - 1];
   for (let leaf of leaves) {
-    leaf.appendChild( makeLayer(0) )}}
+    leaf.appendChild( makeLayer(0) )}
+  treeDepth++;}
 
 {// The DOM
   let tile = es("pattern", {id:"tile",
@@ -671,14 +673,10 @@ function incEcho() {
   panZoom.pan({x:20, y:20});}
 
 /* @Todo
+   - Deleting frames doesn't work: because the view doesn't include echos
    - Undo is broken
-   + Frame:
-   - Controls are broken
-   - add first-level echos
-   - add nested frames & echos
-   - allow changing levels
-
-   + Other bullshit:
+   - Sometimes the shapes are outside frame-shapes
+   - Allow changing levels arbitrarily
    - Distinguish the-frame from the other frames
    - Add box for frames
    - Remove box highlight for focused shapes
