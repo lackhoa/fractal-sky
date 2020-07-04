@@ -1,7 +1,7 @@
 let EVENT_LIST = ["onMouseMove", "onMouseEnter", "onMouseLeave", "onMouseUp", "onMouseDown", "onClick", "onChange"];
 
-function setAttr(el, data) {
-  for (let [k, v] of Object.entries(data)) {
+function setAttr(el, attrs) {
+  for (let [k, v] of Object.entries(attrs)) {
     if (k == "transform") {
       console.assert(v.length == 6);  // `v` is a 6-array
       el.setAttribute("transform", `matrix(${v.join(" ")})`)}
@@ -15,16 +15,18 @@ function setAttr(el, data) {
   return el;}
 
 // Element-creation functions
-function e(tag, data, children=[]) {
-  // "data.type" holds the type of the element
-  let ns = data.xmlns || "http://www.w3.org/1999/xhtml";
+function e(tag, attrs={}, children=[]) {
+  // "attrs.tag" holds the type of the element
+  let ns = attrs.xmlns || "http://www.w3.org/1999/xhtml";
   let el = document.createElementNS(ns, tag);
-  setAttr(el, data);
+  setAttr(el, attrs);
   for (let c of children) {el.appendChild(c);};
   return el;}
-let SVG_NS = "http://www.w3.org/2000/svg";
+
 // Create svg element
-function es(tag, data, children=[]) {
-  return e(tag, {...data, xmlns:SVG_NS}, children);}
+let SVG_NS = "http://www.w3.org/2000/svg";
+function es(tag, attrs={}, children=[]) {
+  return e(tag, {...attrs, xmlns:SVG_NS}, children);}
+
 function et(text) {
   return document.createTextNode(text);}
