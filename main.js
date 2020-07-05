@@ -33,7 +33,9 @@ function mouseOffset() {
 
 let mouseMgr = new MouseManager();
 let shapeList = [];  // Keep track of all added shape models (inactives included)
+function activeShapes() { return shapeList.filter((s) => s.isActive()) }
 let frameList = [];  // Keep track of all frames (inactives included)
+function activeFrames() { return frameList.filter((f) => f.isActive()) }
 
 // Store them, so they won't change
 let [W, H] = [window.innerWidth, window.innerHeight];
@@ -188,8 +190,6 @@ let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
                   tag:"rect", stroke:"red"};
 let frameMold = {tag:"use", href:"#frame",};
 
-function serialize(shape) {return shape.getModel()}
-
 var root, controlLayer, boxLayer, axesLayer;
 
 /** A model is a simple locked dictionary, useful for automatic serialization
@@ -222,14 +222,19 @@ function triggerUpdate(model, keys) {
   for (let key of keys) {
     model.set({[key]: model.get(key)})}}
 
-function Shape(type, mold) {
+function Shape(type, mold={}) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
   // Optionally pass in `data` for serialization purpose
   let that = this;  // Weird trick to make "this" work in private function
+  that.type = type;
   var model;
+  if (type == "frame") {
+    var {tag, ...attrs} = {...frameMold, ...mold};}
+  else {
+    var {tag, ...attrs} = mold;}
+  that.tag = tag;
   // Calculating spawn location
-  let {tag, ...attrs} = {...mold};
   let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
   let {x,y} = panZoom.getPan();
   let [dx,dy] = [x,y];
@@ -241,9 +246,14 @@ function Shape(type, mold) {
       [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [X,Y, X+100, Y+100]}}
 
   else if (type == "frame") {
-    let DEFAULT_SCALE = 1/3;  // xform will be figured out from here
-    attrs.transform = [D*DEFAULT_SCALE,0, 0,D*DEFAULT_SCALE,
-                       (-dx+100+rx)/z, (-dy+100+ry)/z]}
+    let xform = attrs.xform;
+    if (xform) {
+      let [a,b,c,d,e,f] = attrs.xform;
+      attrs.transform = [a*D,b*D, c*D,d*D, e,f];}
+    else {
+      let DEFAULT_SCALE = 1/3;  // How much will the shapes within it will be scaled
+      attrs.transform = [D*DEFAULT_SCALE,0, 0,D*DEFAULT_SCALE,
+                         (-dx+100+rx)/z, (-dy+100+ry)/z]}}
 
   else if (!attrs.transform) {
     // panZoom's transform (svg → screen): V ➾ P(V) = zV+Δ (where Δ = [dx,dy])
@@ -262,11 +272,12 @@ function Shape(type, mold) {
      ** If depth > 0, recurse down */
     newView = (parent, depth) => {
       console.assert(model, "Model is supposed to be initialized already!");
-      let el = es("g", {class:"frame",
-                        transform:model.get("xform")},
+      let [a,b,c,d,e,f] = model.get("transform");
+      let xform = [a/D,b/D, c/D,d/D, e,f];
+      let el = es("g", {class:"frame", transform:xform},
                   [es("g", {class:"frame-shapes"})]);
       // A frame needs its shapes
-      for (let shape of shapeList) {
+      for (let shape of activeShapes()) {
         shape.newView( frameShapes(el) )}
       // If this is a branch: make a forest of nodes of the depth level
       if (depth > 0) {
@@ -379,11 +390,11 @@ function Shape(type, mold) {
                           (evt) => {
                             ctrOnMouseDown(rotator)(evt)
                             // Let the pivot be at the center of the shape
-                            let xform = model.get("transform");
-                            let [ox,oy] = transform(xform, [0.5,0.5]);
+                            let tform = model.get("transform");
+                            let [ox,oy] = transform(tform, [0.5,0.5]);
                             let [x,y] = mouseMgr.getMousePos();
                             rotPivot = [ox,oy];
-                            rotMatrix = xform;
+                            rotMatrix = tform;
                             rotAngle = Math.atan2(y-oy, x-ox);}},
                     // dimension ~100x100
                     [es("path", {d:"M 75 25 A 50 50, 0, 1, 1, 25 75",
@@ -426,8 +437,7 @@ function Shape(type, mold) {
   else {
     // This function is in charge of modifying the controller's locations
     updateFn = (k,v) => {
-      for (let {el} of views) {
-        if (k != "xform") { setAttr(el, {[k]: v}) }}
+      for (let {el} of views) { setAttr(el, {[k]: v}) }
 
       if (k == "transform") {
         // transform is applied directly to the box
@@ -449,28 +459,23 @@ function Shape(type, mold) {
         setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize":"row-resize"});
         setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize":"row-resize"});
 
-        // Frames have an additional thing to take care of: transform
+        // Frames more things to take care of:
         if (type == "frame") {
-          setAttr(axes, {transform:v})}}}}
+          // Transform of axes
+          setAttr(axes, {transform:v})
+          // Nested stuff
+          let xform = [a/D,b/D, c/D,d/D, e,f];
+          for (let {el} of views) {
+            setAttr(el, {transform:xform})}}}}}
 
   // Model holds changing data which to be synced with the view
   // In shapes, the model holds attributes
   // In frames, the model molds session-specific transform and xform
-  model = new Model({...attrs}, updateFn);
-  that.model = model;
-
-  // Ugly hack for frame: change xform based on this "surface-level" transform
-  // Since we don't have access to the "inside value", we can't change another value based on the result of one
   if (type == "frame") {
-    model.augmentUpdateFn((k,v) => {
-      if (k == "transform") {
-        let [a,b, c,d, e,f] = v;
-        let xform = [a/D,b/D, c/D,d/D, e,f];
-        model.set({xform:xform});  // Store scale in the model, since it's used frequently
-        for (let {el} of views) {
-          setAttr(el, {transform:xform})}}})
-    // Trigger the change
-    triggerUpdate(model, ["transform"]);}
+    model = new Model({transform: attrs.transform}, updateFn);}
+  else {
+    model = new Model(attrs, updateFn);}
+  that.model = model;
 
   function setUndoable(attrs) {
     let before = {};
@@ -524,16 +529,13 @@ function Shape(type, mold) {
     // Remove from DOM, the shape's still around for undo/redo
     state.unfocus(that);
     active = false;
-    for (let {el} of views) {el.remove()}
+    for (let {el} of views) { el.remove() }
     controls.remove();
     box.remove();
     if (type == "frame") { axes.remove() }}
-  that.deregister = deregister.bind(that);
+  that.deregister = deregister.bind(that);}
 
-  // Technically this returns only the copy of the model
-  that.getModel = () => model.getAll();}
-
-var treeDepth = 1;  // Depth of the deepest node
+var treeDepth = 2;  // Depth of the deepest node
 function frameShapes(frame) {return frame.children[0]}
 function frameNested(frame) {return frame.children[1]}
 function isLeaf(frame) {
@@ -542,9 +544,8 @@ function isLeaf(frame) {
 /** Make frames of the passed depth, then put them to a group */
 function makeLayer(depth) {
   let g = es("g", {class:"frame-nested"});
-  for (let frame of frameList) {
-    if (frame.isActive()) {
-      frame.newView(g, depth)}}
+  for (let frame of activeFrames()) {
+    frame.newView(g, depth)}
   return g;}
 
 // A layer is list of frames
@@ -553,7 +554,7 @@ function getLayers() {
   // The first layer is the shape layer
   let res = [[root]];
   var lastLayer = res[0];
-  if (frameList.length != 0) {
+  if (activeFrames().length != 0) {
     // We wouldn't need deeper layers if there's only the identity frame
     while (true) {
       var newLayer = [];
@@ -577,6 +578,32 @@ function incDepth() {
   for (let leaf of leaves) {
     leaf.appendChild( makeLayer(0) )}
   treeDepth++;}
+
+function newShape(type, mold) {
+  let s = new Shape(type, mold);
+  s.register();  // Put all the control stuff in the DOM
+  let layers = getLayers();
+  if (type == "frame") {
+    // Include this frame in the frameList first, so it will include itself
+    frameList.push(s);
+    if (activeFrames().length == 1) {// If the frame list was empty before
+      s.newView(frameNested(root), treeDepth-1)}
+    else {
+      var depth = 0;
+      // Exclude the last item
+      for (let layer of layers.slice(0,-1)) {
+        for (let frame of layer) {
+          assert(frame.getAttribute("class") == "frame");
+          s.newView(frameNested(frame), treeDepth-depth-1);}
+        depth++;}}}
+
+  else {// None-frames
+    for (let layer of layers) {
+      for (let frame of layer) {
+        s.newView(frameShapes(frame))}}
+    shapeList.push(s);}
+
+  issueCmd({action:"create", shape:s});}
 
 {// The DOM
   let tile = es("pattern", {id:"tile",
@@ -641,31 +668,6 @@ function incDepth() {
                         // Due to event propagation, events not handled by any shape will be handled by the surface
                         root, boxLayer, controlLayer, axesLayer])]);
 
-  function newShape(type, mold) {
-    let s = new Shape(type, mold);
-    s.register();  // Put all the control stuff in the DOM
-    let layers = getLayers();
-    if (type == "frame") {
-      // Include this frame in the frameList first, so it will include itself
-      frameList.push(s);
-      if (frameList.length == 1) {// If the frame list was empty before
-        s.newView(frameNested(root), treeDepth-1)}
-      else {
-        var depth = 0;
-        // Exclude the last item
-        for (let layer of layers.slice(0,-1)) {
-          for (let frame of layer) {
-            assert(frame.getAttribute("class") == "frame");
-            s.newView(frameNested(frame), treeDepth-depth-1);}
-          depth++;}}}
-
-    else {// None-frames
-      for (let layer of layers) {
-        for (let frame of layer) {s.newView( frameShapes(frame) )}}
-      shapeList.push(s);}
-
-    issueCmd({action:"create", shape:s});}
-
   let UI = e("div", {id:"UI"},
              [// Shape creation
                e("button", {onClick: (evt) => {newShape("shape", rectMold)}},
@@ -674,7 +676,7 @@ function incDepth() {
                  [et("Circle")]),
                e("button", {onClick: (evt) => {newShape("shape", lineMold)}},
                  [et("Line")]),
-               e("button", {onClick: (evt) => {newShape("frame", frameMold)}},
+               e("button", {onClick: (evt) => {newShape("frame")}},
                  [et("Frame")]),
 
                // Save to file

@@ -2,13 +2,22 @@ let fileInput = e("input", {type:"file", accept:".json", onChange:readSingleFile
 // Gotta do this due to HTML BS
 function triggerUpload(evt) {fileInput.click()}
 
+function serialize(shape) {
+  if (shape.type == "frame") {
+    let [a,b,c,d,e,f] = shape.model.get("transform");
+    return {xform: [a/D,b/D, c/D,d/D, e,f],
+            type:"frame"};}
+  else {
+    return {...shape.model.getAll(),
+            type:"shape", tag:shape.tag};}}
+
 // Load the saved contents
-function loadComplete(evt) {// Note: currently can only load 2D shapes
+function loadComplete(evt) {
   let contents = JSON.parse(evt.target.result);
   clearSvg();
   log(contents);
-  contents.map((mold) => {new Shape(mold).register()});
-  // We will not allow undoing save-load for now (I mean when would you need that?)
+  contents.map(({type, ...mold}) => {newShape(type, mold)});
+  // We don't allow undoing save/load for now (when'd you need that?)
   undoStack.length = 0;
   redoStack.length = 0;
   updateUndoUI();}
@@ -23,15 +32,31 @@ function readSingleFile(evt) {
   evt.target.value = "";}
 
 function removeChildren(node) {
-  while (node.firstChild) {node.removeChild(node.firstChild)}}
+  while (node.firstChild) {
+    node.removeChild(node.firstChild)}}
 
 function clearSvg() {
-  removeChildren(shapes);
-  removeChildren(boxes);
-  removeChildren(controls);
-  shapeList.length = 0;}
+  // Empty the DOM
+  for (s of shapeList.concat(frameList)) {
+    s.deregister()}
+
+  // removeChildren(boxLayer);
+  // removeChildren(controlLayer);
+  // removeChildren(axesLayer);
+  // // The root still needs its shapes and frames
+  // removeChildren(frameShapes(root));
+  // removeChildren(frameNested(root));
+  // Empty the lists
+  shapeList.length = 0;
+  frameList.length = 0;}
 
 function saveDiagram() {
-  let json = shapeList.filter((s) => s.isActive()).map((s) => serialize(s));
-  let blob = new Blob([JSON.stringify(json)], { "type": "text/json" });
+  // Of course we only save active frames, shapes
+  let activeShapes = shapeList.filter((s) => s.isActive());
+  let activeFrames = frameList.filter((f) => f.isActive());
+  let shapesJson = activeShapes.map((s) => serialize(s));
+  let framesJson = activeFrames.map((s) => serialize(s));
+  let json = shapesJson.concat(framesJson);
+  let blob = new Blob([JSON.stringify(json)],
+                      { "type":"text/json" });
   saveAs(blob, "diagram.json");}
