@@ -3,7 +3,7 @@ let EVENT_LIST = ["onMouseMove", "onMouseEnter", "onMouseLeave", "onMouseUp", "o
 function setAttr(el, attrs) {
   for (let [k, v] of Object.entries(attrs)) {
     if (k == "transform") {
-      console.assert(v.length == 6);  // `v` is a 6-array
+      console.assert(v.length == 6, "Malformed transform");  // `v` is a 6-array
       el.setAttribute("transform", `matrix(${v.join(" ")})`)}
     else if (k == "style") {
       for (let [sk, sv] of Object.entries(v)) {el.style[sk] = sv}}

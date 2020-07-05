@@ -186,7 +186,7 @@ let boxMold = {...commonMold, tag:"rect",
 let cornerWidth = 20;
 let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
                   tag:"rect", stroke:"red"};
-let frameMold = {tag:"use", type:"frame", href:"#frame",};
+let frameMold = {tag:"use", href:"#frame",};
 
 function serialize(shape) {return shape.getModel()}
 
@@ -222,14 +222,14 @@ function triggerUpdate(model, keys) {
   for (let key of keys) {
     model.set({[key]: model.get(key)})}}
 
-function Shape(mold) {
+function Shape(type, mold) {
   // Creates and adds a group containing the shape and its controls from a mold
   // The mold contains the DOM tag and initial attributes
   // Optionally pass in `data` for serialization purpose
   let that = this;  // Weird trick to make "this" work in private function
   var model;
   // Calculating spawn location
-  let {type, tag, ...attrs} = {...mold};
+  let {tag, ...attrs} = {...mold};
   let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
   let {x,y} = panZoom.getPan();
   let [dx,dy] = [x,y];
@@ -255,12 +255,13 @@ function Shape(mold) {
   let views = [];  // Views are {parent, el} pairs
   that.getViews = () => views;
   /** Make a DOM element whose attribute is linked to the model
-   * AFAIK This is not supposed to be used with frames */
+   ** This is supposed to be called when the model has been initialized */
   var newView;
   if (type == "frame") {
     /** Returns a <g> element whose transform is synced with the given frame
      ** If depth > 0, recurse down */
     newView = (parent, depth) => {
+      console.assert(model, "Model is supposed to be initialized already!");
       let el = es("g", {class:"frame",
                         transform:model.get("xform")},
                   [es("g", {class:"frame-shapes"})]);
@@ -276,6 +277,7 @@ function Shape(mold) {
       return el;}}
   else {
     newView = (parent) => {
+      console.assert(model, "Model is supposed to be initialized");
       let el = es(tag, model.getAll());
       views.push({parent:parent, el:el});
       parent.appendChild(el);
@@ -295,7 +297,7 @@ function Shape(mold) {
   that.move = move;
 
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
-  var bMold = (tag == "line") ? lineBoxMold : boxMold;
+  let bMold = (tag == "line") ? lineBoxMold : boxMold;
   let box = es(
     bMold.tag,
     {...bMold, visibility: "hidden",
@@ -425,7 +427,8 @@ function Shape(mold) {
     // This function is in charge of modifying the controller's locations
     updateFn = (k,v) => {
       for (let {el} of views) {
-        setAttr(el, {[k]: v})}
+        if (k != "xform") { setAttr(el, {[k]: v}) }}
+
       if (k == "transform") {
         // transform is applied directly to the box
         setAttr(box, {transform: v});
@@ -450,7 +453,10 @@ function Shape(mold) {
         if (type == "frame") {
           setAttr(axes, {transform:v})}}}}
 
-  model = new Model({type:type, tag:tag, ...attrs}, updateFn);
+  // Model holds changing data which to be synced with the view
+  // In shapes, the model holds attributes
+  // In frames, the model molds session-specific transform and xform
+  model = new Model({...attrs}, updateFn);
   that.model = model;
 
   // Ugly hack for frame: change xform based on this "surface-level" transform
@@ -460,7 +466,7 @@ function Shape(mold) {
       if (k == "transform") {
         let [a,b, c,d, e,f] = v;
         let xform = [a/D,b/D, c/D,d/D, e,f];
-        model.set({xform:xform});  // Store this value in the model
+        model.set({xform:xform});  // Store scale in the model, since it's used frequently
         for (let {el} of views) {
           setAttr(el, {transform:xform})}}})
     // Trigger the change
@@ -635,11 +641,11 @@ function incDepth() {
                         // Due to event propagation, events not handled by any shape will be handled by the surface
                         root, boxLayer, controlLayer, axesLayer])]);
 
-  function newShape(mold) {
-    let s = new Shape(mold);
+  function newShape(type, mold) {
+    let s = new Shape(type, mold);
     s.register();  // Put all the control stuff in the DOM
     let layers = getLayers();
-    if (mold.type == "frame") {
+    if (type == "frame") {
       // Include this frame in the frameList first, so it will include itself
       frameList.push(s);
       if (frameList.length == 1) {// If the frame list was empty before
@@ -662,13 +668,13 @@ function incDepth() {
 
   let UI = e("div", {id:"UI"},
              [// Shape creation
-               e("button", {onClick: (evt) => {newShape(rectMold)}},
+               e("button", {onClick: (evt) => {newShape("shape", rectMold)}},
                  [et("Rectangle")]),
-               e("button", {onClick: (evt) => {newShape(circMold)}},
+               e("button", {onClick: (evt) => {newShape("shape", circMold)}},
                  [et("Circle")]),
-               e("button", {onClick: (evt) => {newShape(lineMold)}},
+               e("button", {onClick: (evt) => {newShape("shape", lineMold)}},
                  [et("Line")]),
-               e("button", {onClick: (evt) => {newShape(frameMold)}},
+               e("button", {onClick: (evt) => {newShape("frame", frameMold)}},
                  [et("Frame")]),
 
                // Save to file
