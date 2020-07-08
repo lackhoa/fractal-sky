@@ -1,5 +1,3 @@
-let EVENT_LIST = ["onMouseMove", "onMouseEnter", "onMouseLeave", "onMouseUp", "onMouseDown", "onClick", "onChange"];
-
 function setAttr(el, attrs) {
   for (let [k, v] of Object.entries(attrs)) {
     if (k == "transform") {
@@ -7,7 +5,7 @@ function setAttr(el, attrs) {
       el.setAttribute("transform", `matrix(${v.join(" ")})`)}
     else if (k == "style") {
       for (let [sk, sv] of Object.entries(v)) {el.style[sk] = sv}}
-    else if (EVENT_LIST.includes(k)) {
+    else if (k.substring(0,2) == "on") {
       // Don't include these as attributes, better performance and avoid ES5/6 bugs
       // The "substring" is to remove the "on", because... I don't fucking know?
       el.addEventListener(k.substring(2).toLowerCase(), v)}

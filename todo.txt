@@ -1,13 +1,10 @@
-- The rotation control is super hard to hit!
-- Clean up the model for frames
-- Clean up the event handling stuff in setAttr
-- Save/Load
-- Don't blow off the current diagram if the user hasn't finished picking a load file
+- I need a model of focused control
+- Implement the old controls
 - Allow changing levels arbitrarily
-- Distinguish the-frame from the other frames
-- Add box for frames
-- Remove box highlight for focused shapes
 - Add "send-to-front/back"
 - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
 - Add copy/paste
 - Turn off grid & axes
+- Allow flipping
+
+? Remove box highlight for focused shapes

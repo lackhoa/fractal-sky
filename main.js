@@ -176,15 +176,16 @@ function rotate(m, angle) {
 
 // These models define shape and their associated controls
 // Note: "tag" denotes the DOM element's tag, other attributes are consistent with my DOM model
+let HL_COLOR = "#0000FF55"
 let commonMold = {fill:"transparent", stroke:"black",
                   "vector-effect": "non-scaling-stroke"};
 let rectMold = {...commonMold, tag:"rect", width:1, height:1};
 let circMold = {...commonMold, tag:"circle", cx:0.5, cy:0.5, r:0.5};
 let lineMold = {...commonMold, tag: "line"};
-let lineBoxMold = {...lineMold, "stroke-width":10, stroke:"#0000FF55",};
+let lineBoxMold = {...lineMold, "stroke-width":10, stroke:HL_COLOR,};
 
 let boxMold = {...commonMold, tag:"rect",
-               width:1, height:1, fill:"#0000FF55",};
+               width:1, height:1, fill:HL_COLOR,};
 let cornerWidth = 20;
 let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
                   tag:"rect", stroke:"red"};
@@ -372,20 +373,24 @@ function Shape(type, mold={}) {
                                         [ox,oy])})}
 
     // Freely changing i and j
-    var iCtr = es(ctag, {...cornerMold, x:0.95,  y:-0.05,
-                         onMouseDown:ctrOnMouseDown(iMove)})
-    var jCtr = es(ctag, {...cornerMold, x:-0.05, y:0.95,
-                         onMouseDown:ctrOnMouseDown(jMove)});
+    var iCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(iMove)})
+    var jCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(jMove)});
     // Side controls
     var iSide = es("line", {...lineBoxMold, x1:1,y1:0.2, x2:1,y2:0.8,
                             onMouseDown:ctrOnMouseDown(iExtend),
-                            cursor:"col-resize",
-                            stroke:"#FF000055"});
+                            cursor:"col-resize", stroke:"#FF000055"});
     var jSide = es("line", {...lineBoxMold, x1:0.2,y1:1, x2:0.8,y2:1,
                             onMouseDown:ctrOnMouseDown(jExtend),
-                            cursor:"row-resize",
-                            stroke:"#FF000055"});
+                            cursor:"row-resize", stroke:"#FF000055"});
     // Rotator
+    let hitbox = es("rect", {x:0,y:0, width:1,height:1,
+                             fill:"transparent",
+                             stroke:"transparent",
+                             "vector-effect":"non-scaling-stroke",
+                             onMouseEnter:(evt) => hili(),
+                             onMouseLeave:(evt) => unhili()})
+    let hili = () => {setAttr(hitbox, {fill: HL_COLOR})};
+    let unhili = () => {setAttr(hitbox, {fill: "transparent"})};
     var rotCtr = es("g", {onMouseDown:
                           (evt) => {
                             ctrOnMouseDown(rotator)(evt)
@@ -395,15 +400,15 @@ function Shape(type, mold={}) {
                             let [x,y] = mouseMgr.getMousePos();
                             rotPivot = [ox,oy];
                             rotMatrix = tform;
-                            rotAngle = Math.atan2(y-oy, x-ox);}},
-                    // dimension ~100x100
-                    [es("path", {d:"M 75 25 A 50 50, 0, 1, 1, 25 75",
-                                 stroke:"red", "stroke-width": 5,
-                                 fill:"transparent"}),
-                     es("line", {x1:"25", y1:"75", x2:"15", y2:"85",
-                                 stroke:"red", "stroke-width":5}),
-                     es("line", {x1:"25", y1:"75", x2:"35", y2:"85",
-                                 stroke:"red", "stroke-width":5})])
+                            rotAngle = Math.atan2(y-oy, x-ox);},
+                          // "vector-effect" is not inherited for some reason???
+                          stroke:"red"},
+                    // Specified in 0-1 coord
+                    [es("path", {d:"M .5 0 A .5 .5 0 1 1 0 .5",
+                                 fill:"transparent", "vector-effect":"non-scaling-stroke"}),
+                     es("line", {x1:0, y1:.5, x2:-.2, y2:.7,"vector-effect":"non-scaling-stroke"}),
+                     es("line", {x1:0, y1:.5, x2:.2, y2:.7,"vector-effect":"non-scaling-stroke"}),
+                     hitbox])
     controls = es("g", {visibility:"hidden"},
                   [iCtr, jCtr, iSide, jSide, rotCtr]);}
 
@@ -450,7 +455,7 @@ function Shape(type, mold={}) {
         let w = cornerWidth / 2;
         setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
         setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
-        setAttr(rotCtr, {transform: [0.2,0, 0,0.2,  // These are fixed
+        setAttr(rotCtr, {transform: [20,0, 0,20,
                                      tl[0]-w-5, tl[1]-w-5]});
         setAttr(iSide, {transform:v});
         setAttr(jSide, {transform:v});

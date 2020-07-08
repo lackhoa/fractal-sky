@@ -14,8 +14,7 @@ function serialize(shape) {
 // Load the saved contents
 function loadComplete(evt) {
   let contents = JSON.parse(evt.target.result);
-  clearSvg();
-  log(contents);
+  clearSvg();  // We DID clear the svg after parsing  the result!
   contents.map(({type, ...mold}) => {newShape(type, mold)});
   // We don't allow undoing save/load for now (when'd you need that?)
   undoStack.length = 0;
