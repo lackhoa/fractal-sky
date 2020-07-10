@@ -5,7 +5,7 @@ function triggerUpload(evt) {fileInput.click()}
 function serialize(shape) {
   if (shape.type == "frame") {
     let [a,b,c,d,e,f] = shape.model.get("transform");
-    return {xform: [a/D,b/D, c/D,d/D, e,f],
+    return {xform: [a/theD,b/theD, c/theD,d/theD, e,f],
             type:"frame"};}
   else {
     return {...shape.model.getAll(),

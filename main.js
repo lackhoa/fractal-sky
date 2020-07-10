@@ -3,10 +3,20 @@ let log = console.log;
 let assert = console.assert;
 let abs = Math.abs;
 let entries = Object.entries;
+function distance([x,y], [X,Y]) {
+  let dx = X - x;
+  let dy = Y - y;
+  return Math.sqrt(dx*dx + dy*dy);}
+function factor([a,b, c,d, e,f], [u,v]) {
+  assert((b*c - a*d) != 0);
+  let x = (-c*f + c*v + d*(-u) + e*d)/(b*c - a*d)
+  let y = (a*f - a*v + b*u - e*b)/(b*c - a*d)
+  return [x,y];}
 let idMatrix = [1,0, 0,1, 0,0];
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's arrangement
-var panZoom = null;  // A third-party svg pan-zoom thing
+var panZoom;  // A third-party svg pan-zoom thing
+var svg_el;  // The main svg element of the app
 // There's only ever one mouse manager: it keeps track of mouse position, that's it
 function MouseManager() {
   // Keep track of mouse position (in svg coordinate).
@@ -17,12 +27,17 @@ function MouseManager() {
   this.getPrevMousePos = () => prevMousePos;
 
   function svgCoor([x,y]) {
+    // x,y is mouse location given in screen coordinate
+    // Factor in the offset of the svg element
+    let {e,f} = svg_el.getScreenCTM();
+    // Undo further svg-pan-zoom's effect
     let z = panZoom.getZoom();
     let d = panZoom.getPan();
-    return [(x-d.x)/z, (y-d.y)/z];}
+    return [(x - d.x - e)/z, (y - d.y - f)/z];}
 
   function handle(evt) {
     prevMousePos = mousePos;
+    // Urgh, this is not it! evt.x refers to screen coordinate
     mousePos = svgCoor([evt.x,evt.y]);}
   this.handle = handle;}
 
@@ -39,7 +54,7 @@ function activeFrames() { return frameList.filter((f) => f.isActive()) }
 
 // Store them, so they won't change
 let [W, H] = [window.innerWidth, window.innerHeight];
-let D = Math.min(W,H) - (Math.min(W,H) % 100);
+let theD = Math.min(W,H) - (Math.min(W,H) % 100);  // theD is the dimension of "the-frame"
 
 // Undo/Redo stuff
 // "undoStack" and "redoStack" are lists of commands
@@ -188,7 +203,8 @@ let boxMold = {...commonMold, tag:"rect",
                width:1, height:1, fill:HL_COLOR,};
 let cornerWidth = 20;
 let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
-                  tag:"rect", stroke:"red"};
+                  tag:"rect", stroke:"red",
+                  cursor:"move"};
 let frameMold = {tag:"use", href:"#frame",};
 
 var root, controlLayer, boxLayer, axesLayer;
@@ -250,10 +266,10 @@ function Shape(type, mold={}) {
     let xform = attrs.xform;
     if (xform) {
       let [a,b,c,d,e,f] = attrs.xform;
-      attrs.transform = [a*D,b*D, c*D,d*D, e,f];}
+      attrs.transform = [a*theD,b*theD, c*theD,d*theD, e,f];}
     else {
-      let DEFAULT_SCALE = 1/3;  // How much will the shapes within it will be scaled
-      attrs.transform = [D*DEFAULT_SCALE,0, 0,D*DEFAULT_SCALE,
+      let scale = 1/3;  // Scaling is applied by default
+      attrs.transform = [theD*scale,0, 0,theD*scale,
                          (-dx+100+rx)/z, (-dy+100+ry)/z]}}
 
   else if (!attrs.transform) {
@@ -274,7 +290,7 @@ function Shape(type, mold={}) {
     newView = (parent, depth) => {
       console.assert(model, "Model is supposed to be initialized already!");
       let [a,b,c,d,e,f] = model.get("transform");
-      let xform = [a/D,b/D, c/D,d/D, e,f];
+      let xform = [a/theD,b/theD, c/theD,d/theD, e,f];
       let el = es("g", {class:"frame", transform:xform},
                   [es("g", {class:"frame-shapes"})]);
       // A frame needs its shapes
@@ -287,7 +303,7 @@ function Shape(type, mold={}) {
       views.push({parent:parent, el:el});
       parent.appendChild(el);
       return el;}}
-  else {
+  else {// This is a normal shape
     newView = (parent) => {
       console.assert(model, "Model is supposed to be initialized");
       let el = es(tag, model.getAll());
@@ -337,32 +353,46 @@ function Shape(type, mold={}) {
     controls = es("g", {visibility: "hidden"},
                   [endpoint1, endpoint2]);}
   else {
-    function iMove([dx,dy]) {
+    function iMove([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
-      setUndoable({transform: [a+dx,b+dy, c,d, e,f]})}
-
-    function jMove([dx,dy]) {
-      let [a,b,c,d,e,f] = model.get("transform");
-      setUndoable({transform: [a,b, c+dx,d+dy, e,f]})}
-
-    function iExtend([dx,dy], evt) {
-      // If "shift" is pressed, maintain ratio
-      let [a,b,c,d,e,f] = model.get("transform");
-      // The havior depends on the orientation of the control
-      // Division by zero can only occur when a = b = 0
-      let s = abs(a) > abs(b) ? (a+dx)/a : (b+dy)/b;
       var m;
-      if (evt.shiftKey) {m = [a*s,b*s, c*s,d*s, e,f];}
-      else {m = [a*s,b*s, c,d, e,f]}
+      // Control key: just set the i-vector to whatever that is
+      if (evt.shiftKey) {
+        let [x,y] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+        m = [x*a,x*b, x*c,x*d, e+c-x*c,f+d-x*d];}
+      else if (evt.ctrlKey) {
+        m = [a+dx,b+dy, c,d, e,f];}
+      else {
+        let s = 1 + (c*dy - d*dx)/(b*c - a*d);
+        let t = 1 + (a*dy - b*dx)/(b*c - a*d);
+        m = [s*a,s*b, t*c,t*d, e+c-t*c,f+d-t*d];}
+
       setUndoable({transform: m});}
 
-    function jExtend([dx,dy], evt) {
+    function jMove([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
-      let s = abs(c) > abs(d) ? (c+dx)/c : (d+dy)/d;
       var m;
-      if (evt.shiftKey) {m = [a*s,b*s, c*s,d*s, e,f]}
-      else {m = [a,b, c*s,d*s, e,f]}
+      if (evt.shiftKey) {
+        let [x,y] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+        m = [y*a,y*b, y*c,y*d, e+a-y*a,f+b-y*b];}
+      else if (evt.ctrlKey) {
+        m = [a,b, c+dx,d+dy, e,f];}
+      else {
+        let s = 1 + (d*dx - c*dy)/(b*c - a*d);
+        let t = 1 + (b*dx - a*dy)/(b*c - a*d);
+        m = [s*a,s*b, t*c,t*d, e+a-s*a,f+b-s*b];}
+
       setUndoable({transform: m});}
+
+    function i_ij([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      let [s,_t] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+      setUndoable({transform: [a*s,b*s, c,d, e,f]});}
+
+    function j_ij([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      let [_s,t] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+      setUndoable({transform: [a,b, c*t,d*t, e,f]});}
 
     var rotPivot, rotMatrix, rotAngle;  // set whenever the rotator is pressed
     function rotator() {
@@ -376,21 +406,13 @@ function Shape(type, mold={}) {
     var iCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(iMove)})
     var jCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(jMove)});
     // Side controls
-    var iSide = es("line", {...lineBoxMold, x1:1,y1:0.2, x2:1,y2:0.8,
-                            onMouseDown:ctrOnMouseDown(iExtend),
-                            cursor:"col-resize", stroke:"#FF000055"});
-    var jSide = es("line", {...lineBoxMold, x1:0.2,y1:1, x2:0.8,y2:1,
-                            onMouseDown:ctrOnMouseDown(jExtend),
-                            cursor:"row-resize", stroke:"#FF000055"});
+    var i_ij_ctr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(i_ij)});
+    var j_ij_ctr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(j_ij)});
     // Rotator
     let hitbox = es("rect", {x:0,y:0, width:1,height:1,
                              fill:"transparent",
                              stroke:"transparent",
-                             "vector-effect":"non-scaling-stroke",
-                             onMouseEnter:(evt) => hili(),
-                             onMouseLeave:(evt) => unhili()})
-    let hili = () => {setAttr(hitbox, {fill: HL_COLOR})};
-    let unhili = () => {setAttr(hitbox, {fill: "transparent"})};
+                             "vector-effect":"non-scaling-stroke"})
     var rotCtr = es("g", {onMouseDown:
                           (evt) => {
                             ctrOnMouseDown(rotator)(evt)
@@ -402,7 +424,7 @@ function Shape(type, mold={}) {
                             rotMatrix = tform;
                             rotAngle = Math.atan2(y-oy, x-ox);},
                           // "vector-effect" is not inherited for some reason???
-                          stroke:"red"},
+                          stroke:"red", cursor:"move"},
                     // Specified in 0-1 coord
                     [es("path", {d:"M .5 0 A .5 .5 0 1 1 0 .5",
                                  fill:"transparent", "vector-effect":"non-scaling-stroke"}),
@@ -410,7 +432,7 @@ function Shape(type, mold={}) {
                      es("line", {x1:0, y1:.5, x2:.2, y2:.7,"vector-effect":"non-scaling-stroke"}),
                      hitbox])
     controls = es("g", {visibility:"hidden"},
-                  [iCtr, jCtr, iSide, jSide, rotCtr]);}
+                  [iCtr, jCtr, i_ij_ctr, j_ij_ctr, rotCtr]);}
 
   function focus() {
     highlight();
@@ -449,27 +471,25 @@ function Shape(type, mold={}) {
         setAttr(box, {transform: v});
         // Adjust controllers' positions
         let [a,b,c,d,e,f] = v;
-        let tl = transform(v, [0,0]);
-        let tr = transform(v, [1,0]);
-        let bl = transform(v, [0,1]);
+        let tl = [e,f];
+        let tr = [a+e,b+f];  // [a,b] + [e,f]
+        let bl = [c+e,d+f];
         let w = cornerWidth / 2;
         setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
         setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
+        let dist = distance([e,f], [a+c+e, b+d+f]);
         setAttr(rotCtr, {transform: [20,0, 0,20,
-                                     tl[0]-w-5, tl[1]-w-5]});
-        setAttr(iSide, {transform:v});
-        setAttr(jSide, {transform:v});
-
-        // Change side control's cursor based on orientation
-        setAttr(iSide, {cursor: (abs(a) > abs(b)) ? "col-resize":"row-resize"});
-        setAttr(jSide, {cursor: (abs(c) > abs(d)) ? "col-resize":"row-resize"});
+                                     // The rotator lines up with the tl and br corners
+                                     e-4*w*(a+c)/dist, f-4*w*(b+d)/dist]});
+        setAttr(i_ij_ctr, {x:a+c/2+e-w, y:b+d/2+f-w});
+        setAttr(j_ij_ctr, {x:a/2+c+e-w, y:b/2+d+f-w});
 
         // Frames more things to take care of:
         if (type == "frame") {
           // Transform of axes
           setAttr(axes, {transform:v})
           // Nested stuff
-          let xform = [a/D,b/D, c/D,d/D, e,f];
+          let xform = [a/theD,b/theD, c/theD,d/theD, e,f];
           for (let {el} of views) {
             setAttr(el, {transform:xform})}}}}}
 
@@ -496,7 +516,7 @@ function Shape(type, mold={}) {
 
   // Shapes have "movement function", which is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
   var moveFn;
-  // All mouse event handlers must implement these
+  // All mouse event handlers must implement this
   function ctrOnMouseDown(fn) {
     // Returns an event handler
     return (evt) => {
@@ -633,45 +653,49 @@ function newShape(type, mold) {
 
   let app = document.getElementById("app");
   // The SVG Layers: also the root frame, with depth of 1 at first
-  root = es("g", {id:"root", class:"frame", transform:idMatrix},
+  root = es("g", {id:"root", class:"frame"},
             [es("g", {class:"frame-shapes"}),
              es("g", {class:"frame-nested"})]);
   controlLayer = es("g", {id:"controls"});
   boxLayer = es("g", {id:"boxes"});
-  // The whole diagram
+  // This is the only "onMouseMove" event
   function surfaceOnMouseMove(evt) {
-    mouseMgr.handle(evt);
-    let focused = state.getFocused()
-    if ((evt.buttons == 1) && focused) {// If dragging & there's a listener
-      focused.respondToDrag(evt);
-      // Cancel bubble, so svg won't get pan/zoom event
-      evt.cancelBubble = true;}}
+    if (evt.buttons == 1) {
+      mouseMgr.handle(evt);
+      let focused = state.getFocused();
+      if (focused &&
+          ((evt.movementX != 0) || (evt.movementY != 0))) {
+        // If dragging & there's a listener, we checked for zero since there's a bug with "ctrl+click" that triggerse this event, even when there's no movement
+        focused.respondToDrag(evt);
+        // Cancel bubble, so svg won't get pan/zoom event
+        evt.cancelBubble = true;}}}
 
   // This layer holds all the axes, so we can turn them all on/off
   axesLayer = es("g", {id:"axes"},
                  [// The identity frame (decoration)
                    es("use", {id:"the-frame", href:"#frame",
-                              transform:[D,0, 0,D, 0,0]})])
+                              transform:[theD,0, 0,theD, 0,0]})])
 
-  let svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
-                  // "W+1" and "H+1" is to show the grid at the border
-                  // pan-zoom wrapper wrap around here
-                  [es("g", {id:"surface",
-                            onMouseMove: surfaceOnMouseMove,
-                            onMouseUp: (evt) => {controlChanged = true;
-                                                 mouseMgr.handle(evt);},
-                            onMouseDown: (evt) => {state.focus(null);
-                                                   mouseMgr.handle(evt);}},
-                      [// Definitions
-                        es("defs", {id:"defs"}, [tile, frameDef]),
-                        // The grid
-                        es("rect", {id:"grid",
-                                    width:2*W+1, height:2*H+1,
-                                    // Offset so that things will be in the middle
-                                    x:-W/2, y:-H/2,
-                                    fill:"url(#tile)"}),
-                        // Due to event propagation, events not handled by any shape will be handled by the surface
-                        root, boxLayer, controlLayer, axesLayer])]);
+  svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
+              // "W+1" and "H+1" is to show the grid at the border
+              // pan-zoom wrapper wrap around here
+              [es("g", {id:"surface",
+                        onMouseMove: surfaceOnMouseMove,
+                        onMouseUp: (evt) => {
+                          controlChanged = true;
+                          mouseMgr.handle(evt);},
+                        onMouseDown: (evt) => {state.focus(null);
+                                               mouseMgr.handle(evt);}},
+                  [// Definitions
+                    es("defs", {id:"defs"}, [tile, frameDef]),
+                    // The grid
+                    es("rect", {id:"grid",
+                                width:2*W+1, height:2*H+1,
+                                // Offset so that things will be in the middle
+                                x:-W/2, y:-H/2,
+                                fill:"url(#tile)"}),
+                    // Due to event propagation, events not handled by any shape will be handled by the surface
+                    axesLayer, root, boxLayer, controlLayer])]);
 
   let UI = e("div", {id:"UI"},
              [// Shape creation
@@ -700,14 +724,3 @@ function newShape(type, mold) {
                                 // Don't do any bullshit on startup
                                 fit:false, center:false});
   panZoom.pan({x:20, y:20});}
-
-/* @Todo
-   - Undo is broken
-   - Allow changing levels arbitrarily
-   - Distinguish the-frame from the other frames
-   - Add box for frames
-   - Remove box highlight for focused shapes
-   - Add "send-to-front/back"
-   - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
-   - Add copy/paste
-*/

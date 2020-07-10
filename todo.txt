@@ -1,5 +1,5 @@
-- I need a model of focused control
 - Implement the old controls
++ My control scheme is flawed at extreme rotations: such as 45ᵒ
 - Allow changing levels arbitrarily
 - Add "send-to-front/back"
 - Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
