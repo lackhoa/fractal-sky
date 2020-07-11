@@ -202,9 +202,8 @@ let lineBoxMold = {...lineMold, "stroke-width":10, stroke:HL_COLOR,};
 let boxMold = {...commonMold, tag:"rect",
                width:1, height:1, fill:HL_COLOR,};
 let cornerWidth = 20;
-let cornerMold = {...commonMold, width:cornerWidth, height:cornerWidth,
-                  tag:"rect", stroke:"red",
-                  cursor:"move"};
+let cornerMold = {...commonMold, r:cornerWidth/2,
+                  tag:"circle", stroke:"red", cursor:"move"};
 let frameMold = {tag:"use", href:"#frame",};
 
 var root, controlLayer, boxLayer, axesLayer;
@@ -353,6 +352,21 @@ function Shape(type, mold={}) {
     controls = es("g", {visibility: "hidden"},
                   [endpoint1, endpoint2]);}
   else {
+    function oMove([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      var m;
+      if (evt.shiftKey) {
+        let [x,y] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+        let s = 1 - Math.min(x,y);
+        m = [a*s,b*s, c*s,d*s, a+c+e-a*s-c*s,b+d+f-b*s-d*s];}
+      else {
+        // The fixed point is the bottom-right: [a+c+e, b+d+f]
+        let s = (+d*dx - c*dy)/(b*c - a*d) + 1
+        let t = (-b*dx + a*dy)/(b*c - a*d) + 1;
+        m = [s*a,s*b, t*c,t*d, a+c+e-s*a-t*c,b+d+f-s*b-t*d];}
+
+      setUndoable({transform: m});}
+
     function iMove([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
       var m;
@@ -363,8 +377,8 @@ function Shape(type, mold={}) {
       else if (evt.ctrlKey) {
         m = [a+dx,b+dy, c,d, e,f];}
       else {
-        let s = 1 + (c*dy - d*dx)/(b*c - a*d);
-        let t = 1 + (a*dy - b*dx)/(b*c - a*d);
+        let s = 1 + (-d*dx + c*dy)/(b*c - a*d);
+        let t = 1 + (-b*dx + a*dy)/(b*c - a*d);
         m = [s*a,s*b, t*c,t*d, e+c-t*c,f+d-t*d];}
 
       setUndoable({transform: m});}
@@ -384,12 +398,39 @@ function Shape(type, mold={}) {
 
       setUndoable({transform: m});}
 
-    function i_ij([dx,dy], evt) {
+    function ijMove([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      var m;
+      if (evt.shiftKey) {
+        let [x,y] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+        let s = Math.max(x,y);
+        m = [a*s,b*s, c*s,d*s, e,f];}
+      else {
+        let s = -(d*dx - c*dy)/(b*c - a*d) + 1
+        let t = +(b*dx - a*dy)/(b*c - a*d) + 1;
+        // The fixed point is the top-left: [e,f]
+        m = [s*a,s*b, t*c,t*d, e,f];}
+
+      setUndoable({transform: m});}
+
+    function oiMove([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      let [_s,t] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+      let tt = 1-t;
+      setUndoable({transform: [a,b, c*tt,d*tt, e+c*t,f+d*t]});}
+
+    function ojMove([dx,dy], evt) {
+      let [a,b,c,d,e,f] = model.get("transform");
+      let [s,_t] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
+      let ss = 1-s;
+      setUndoable({transform: [a*ss,b*ss, c,d, e+a*s,f+b*s]});}
+
+    function i_ijMove([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
       let [s,_t] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
       setUndoable({transform: [a*s,b*s, c,d, e,f]});}
 
-    function j_ij([dx,dy], evt) {
+    function j_ijMove([dx,dy], evt) {
       let [a,b,c,d,e,f] = model.get("transform");
       let [_s,t] = factor([a,b,c,d,e,f], mouseMgr.getMousePos());
       setUndoable({transform: [a,b, c*t,d*t, e,f]});}
@@ -402,12 +443,16 @@ function Shape(type, mold={}) {
                                                (Math.atan2(y-oy,x-ox) - rotAngle)),
                                         [ox,oy])})}
 
-    // Freely changing i and j
+    // Corners
     var iCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(iMove)})
     var jCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(jMove)});
+    var oCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(oMove)});
+    var ijCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(ijMove)});
     // Side controls
-    var i_ij_ctr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(i_ij)});
-    var j_ij_ctr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(j_ij)});
+    var i_ijCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(i_ijMove)});
+    var j_ijCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(j_ijMove)});
+    var oiCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(oiMove)});
+    var ojCtr = es(ctag, {...cornerMold, onMouseDown:ctrOnMouseDown(ojMove)});
     // Rotator
     let hitbox = es("rect", {x:0,y:0, width:1,height:1,
                              fill:"transparent",
@@ -432,7 +477,9 @@ function Shape(type, mold={}) {
                      es("line", {x1:0, y1:.5, x2:.2, y2:.7,"vector-effect":"non-scaling-stroke"}),
                      hitbox])
     controls = es("g", {visibility:"hidden"},
-                  [iCtr, jCtr, i_ij_ctr, j_ij_ctr, rotCtr]);}
+                  [oCtr, iCtr, jCtr, ijCtr,  // Corners
+                   oiCtr, ojCtr, i_ijCtr, j_ijCtr,  // Sides
+                   rotCtr]);}
 
   function focus() {
     highlight();
@@ -474,15 +521,23 @@ function Shape(type, mold={}) {
         let tl = [e,f];
         let tr = [a+e,b+f];  // [a,b] + [e,f]
         let bl = [c+e,d+f];
+        let br = [a+c+e,b+d+f];
+        // The rotator location
         let w = cornerWidth / 2;
-        setAttr(iCtr, {x:tr[0]-w, y:tr[1]-w});
-        setAttr(jCtr, {x:bl[0]-w, y:bl[1]-w});
-        let dist = distance([e,f], [a+c+e, b+d+f]);
+        let dist = distance(tl, br);
         setAttr(rotCtr, {transform: [20,0, 0,20,
                                      // The rotator lines up with the tl and br corners
                                      e-4*w*(a+c)/dist, f-4*w*(b+d)/dist]});
-        setAttr(i_ij_ctr, {x:a+c/2+e-w, y:b+d/2+f-w});
-        setAttr(j_ij_ctr, {x:a/2+c+e-w, y:b/2+d+f-w});
+        // The corners' locations
+        setAttr(oCtr,  {cx:tl[0], cy:tl[1]});
+        setAttr(iCtr,  {cx:tr[0], cy:tr[1]});
+        setAttr(jCtr,  {cx:bl[0], cy:bl[1]});
+        setAttr(ijCtr, {cx:br[0], cy:br[1]});
+        // The side controls' locations
+        setAttr(oiCtr,   {cx:a/2+e, cy:b/2+f});
+        setAttr(ojCtr,   {cx:c/2+e, cy:d/2+f});
+        setAttr(i_ijCtr, {cx:a+c/2+e, cy:b+d/2+f});
+        setAttr(j_ijCtr, {cx:a/2+c+e, cy:b/2+d+f});
 
         // Frames more things to take care of:
         if (type == "frame") {
