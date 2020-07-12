@@ -286,22 +286,23 @@ function Shape(type, mold={}) {
   var newView;
   if (type == "frame") {
     /** Returns a <g> element whose transform is synced with the given frame
-     ** If depth > 0, recurse down */
-    newView = (parent, depth) => {
+     ** If depth > 0, recurse down
+     ** "frameBeingCreated" is the frame that is in the process of being added */
+    newView = (parent, depth, frameBeingCreated) => {
       console.assert(model, "Model is supposed to be initialized already!");
       let [a,b,c,d,e,f] = model.get("transform");
       let xform = [a/theD,b/theD, c/theD,d/theD, e,f];
       let el = es("g", {class:"frame", transform:xform},
                   [es("g", {class:"frame-shapes"})]);
+      parent.appendChild(el);
       // A frame needs its shapes
       for (let shape of activeShapes()) {
         shape.newView( frameShapes(el) )}
       // If this should be a branch: make a forest of nodes of the depth level
       if (depth > 0) {
-        el.appendChild( makeLayer([...activeFrames(), this], depth-1) );}
+        el.appendChild( makeLayer(depth-1, frameBeingCreated) );}
 
       views.push({parent:parent, el:el, depth:depth});
-      parent.appendChild(el);
       return el;}}
   else {// This is a normal shape
     newView = (parent) => {
@@ -607,14 +608,14 @@ function Shape(type, mold={}) {
       if (activeFrames().length == 0) {
         // If there was no nested frames before, then the tree technically only has zero-depth (in the DOM).
         // Since it's pointless to have overlapping elements
-        newView(frameNested(root), treeDepth-1)}
+        newView(frameNested(root), treeDepth-1, this)}
       else {
         var depth = 0;
         // Exclude the leaves, which don't have nested frames
         for (let layer of layers.slice(0,-1)) {
           for (let frame of layer) {
             assert(frame.getAttribute("class") == "frame");
-            newView(frameNested(frame), treeDepth-depth-1);}
+            newView(frameNested(frame), treeDepth-depth-1, this);}
           depth++;}}}
 
     else {// None-frames
@@ -652,17 +653,19 @@ function Shape(type, mold={}) {
           break;}}}
     this.cleanUpLeaves = cleanUpLeaves;}}
 
-var treeDepth = 2;  // Depth of the deepest node
+var treeDepth = 1;  // Depth of the deepest node
 function frameShapes(frame) {return frame.children[0]}
 function frameNested(frame) {return frame.children[1]}
 function isLeaf(frame) {
   return (frame.getElementsByClassName("frame-nested").length == 0);}
 
 /** Make frames of "depth", then put them to a group */
-function makeLayer(frames, depth) {
+function makeLayer(depth, frameBeingCreated) {
   let g = es("g", {class:"frame-nested"});
+  let frames = activeFrames();
+  if (frameBeingCreated) frames.push(frameBeingCreated)
   for (let frame of frames) {
-    frame.newView(g, depth)}
+    frame.newView(g, depth, frameBeingCreated)}
   return g;}
 
 // A layer is list of frames (DOM frames, that is)
@@ -692,15 +695,12 @@ function incDepth() {
   let layers = getLayers();
   let leaves = layers[layers.length - 1];
   for (let leaf of leaves) {
-    leaf.appendChild( makeLayer(activeFrames(), 0) )}
-  treeDepth++;
-  // Update the UI
-  let btn = document.getElementById("dec-depth-btn");
-  btn.disabled = false;}
+    leaf.appendChild( makeLayer(0) )}
+  treeDepth++;}
 
 /** Decrement the current frame count */
 function decDepth() {
-  assert(treeDepth > 1);
+  assert(treeDepth > 0);
   let layers = getLayers();
   // Again, there's a space case when there's no nested frame
   if (layers.length > 1) {
@@ -709,10 +709,7 @@ function decDepth() {
     for (let frame of activeFrames())
       frame.cleanUpLeaves();}
 
-  treeDepth--;
-  // Change the UI
-  let btn = document.getElementById("dec-depth-btn");
-  if (treeDepth <= 1) {btn.disabled = true;}}
+  treeDepth--;}
 
 // What happens when the user clicks the "create button"
 function newShape(type, mold) {
@@ -814,11 +811,23 @@ function newShape(type, mold) {
 
                e("span", {}, [et(" | ")]),
                // Changing depth
-               e("button", {onclick:(evt) => incDepth()},
-                 [et("Depth++")]),
-               e("button", {id:"dec-depth-btn",
-                            onclick:(evt) => decDepth()},
-                 [et("Depth--")])]);
+               e("input", {type:"number", name:"Depth", min:1, max:20,
+                           value:treeDepth,
+                           onchange:(evt) => {
+                             let v = parseInt(evt.target.value);
+                             if (v < treeDepth) {
+                               while (treeDepth > v) {decDepth()}}
+                             else if (v > treeDepth) {
+                               while (treeDepth < v) {incDepth()}}}}),
+
+               e("span", {}, [et(" | ")]),
+               // Toggling grid
+               e("button", {onclick: (evt) => {
+                 let v = getComputedStyle(axesLayer).visibility;
+                 let V = (v == "visible") ? "hidden" : "visible";
+                 setAttr(axesLayer, {visibility: V})}},
+                 [et("Axes")]),
+             ]);
   app.appendChild(UI);
   app.appendChild(svg_el);
   // SVG panzoom only works with whole SVG elements
