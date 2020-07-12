@@ -50,7 +50,8 @@ let mouseMgr = new MouseManager();
 let shapeList = [];  // Keep track of all added shape models (inactives included)
 function activeShapes() { return shapeList.filter((s) => s.isActive()) }
 let frameList = [];  // Keep track of all frames (inactives included)
-function activeFrames() { return frameList.filter((f) => f.isActive()) }
+function activeFrames() {
+  return frameList.filter((f) => f.isActive()) }
 
 // Store them, so they won't change
 let [W, H] = [window.innerWidth, window.innerHeight];
@@ -295,11 +296,11 @@ function Shape(type, mold={}) {
       // A frame needs its shapes
       for (let shape of activeShapes()) {
         shape.newView( frameShapes(el) )}
-      // If this is a branch: make a forest of nodes of the depth level
+      // If this should be a branch: make a forest of nodes of the depth level
       if (depth > 0) {
-        el.appendChild( makeLayer(depth-1) );}
+        el.appendChild( makeLayer([...activeFrames(), this], depth-1) );}
 
-      views.push({parent:parent, el:el});
+      views.push({parent:parent, el:el, depth:depth});
       parent.appendChild(el);
       return el;}}
   else {// This is a normal shape
@@ -497,17 +498,15 @@ function Shape(type, mold={}) {
       if (["x1", "y1", "x2", "y2"].includes(k)) {
         // Changing the endpoints of the model also changes box
         setAttr(box, {[k]: v});
-        // Then we change the nobs, too!
-        let V = v-cornerWidth/2;
         switch (k) {
         case "x1":
-          setAttr(endpoint1, {x: V}); break;
+          setAttr(endpoint1, {cx: v}); break;
         case "y1":
-          setAttr(endpoint1, {y: V}); break;
+          setAttr(endpoint1, {cy: v}); break;
         case "x2":
-          setAttr(endpoint2, {x: V}); break;
+          setAttr(endpoint2, {cx: v}); break;
         case "y2":
-          setAttr(endpoint2, {y: V}); break;}}}}
+          setAttr(endpoint2, {cy: v}); break;}}}}
   else {
     // This function is in charge of modifying the controller's locations
     updateFn = (k,v) => {
@@ -595,25 +594,63 @@ function Shape(type, mold={}) {
   that.isActive = () => active;
 
   function register() {
-    active = true;
-    // Add the views & controls to the DOM
-    for (let {parent,el} of views) {
-      parent.appendChild(el)}
+    // Add the controls to the DOM
     controlLayer.appendChild(controls);
     boxLayer.appendChild(box);
     if (type == "frame") {
-      axesLayer.appendChild(axes)}}
-  that.register = register.bind(that);
+      axesLayer.appendChild(axes)}
+
+    // Add the views
+    assert(views.length == 0);
+    let layers = getLayers();
+    if (type == "frame") {
+      if (activeFrames().length == 0) {
+        // If there was no nested frames before, then the tree technically only has zero-depth (in the DOM).
+        // Since it's pointless to have overlapping elements
+        newView(frameNested(root), treeDepth-1)}
+      else {
+        var depth = 0;
+        // Exclude the leaves, which don't have nested frames
+        for (let layer of layers.slice(0,-1)) {
+          for (let frame of layer) {
+            assert(frame.getAttribute("class") == "frame");
+            newView(frameNested(frame), treeDepth-depth-1);}
+          depth++;}}}
+
+    else {// None-frames
+      for (let layer of layers) {
+        for (let frame of layer) {
+          newView(frameShapes(frame))}}}
+
+    active = true;}
+  this.register = register;
 
   function deregister() {
     // Remove from DOM, the shape's still around for undo/redo
     state.unfocus(that);
     active = false;
     for (let {el} of views) { el.remove() }
+    views.length = 0;  // Wipe out the views too, since it will be created a new when registered
     controls.remove();
     box.remove();
     if (type == "frame") { axes.remove() }}
-  that.deregister = deregister.bind(that);}
+  this.deregister = deregister;
+
+  if (type == "frame") {
+    function cleanUpLeaves() {
+      // Remove leaves that were detached from the DOM (whose parent is null)
+      // Oh my God this is ugly!
+      let len = views.length;
+      assert(len > 0, "If it has no views, then it wouldn't have leaves");
+
+      // This loop applies to the leaves
+      var i;
+      for (i = len-1; i >= 0; i--) {
+        if (views[i].el.parent) {
+          // Remove everything we've looped over
+          views.length = i+1;
+          break;}}}
+    this.cleanUpLeaves = cleanUpLeaves;}}
 
 var treeDepth = 2;  // Depth of the deepest node
 function frameShapes(frame) {return frame.children[0]}
@@ -621,25 +658,24 @@ function frameNested(frame) {return frame.children[1]}
 function isLeaf(frame) {
   return (frame.getElementsByClassName("frame-nested").length == 0);}
 
-/** Make frames of the passed depth, then put them to a group */
-function makeLayer(depth) {
+/** Make frames of "depth", then put them to a group */
+function makeLayer(frames, depth) {
   let g = es("g", {class:"frame-nested"});
-  for (let frame of activeFrames()) {
+  for (let frame of frames) {
     frame.newView(g, depth)}
   return g;}
 
-// A layer is list of frames
-// @Fix: still infinite loop! When there is a nested frame
+// A layer is list of frames (DOM frames, that is)
 function getLayers() {
   // The first layer is the shape layer
   let res = [[root]];
-  var lastLayer = res[0];
+  var lastLayer = [root];
   if (activeFrames().length != 0) {
-    // We wouldn't need deeper layers if there's only the identity frame
+    // the DOM has zero depth if there's only the identity frame
     while (true) {
       var newLayer = [];
-      assert(lastLayer.length > 0);
-      if (isLeaf(lastLayer[0])) {break}
+      assert(lastLayer.length > 0, "There can't be an empty layer?");
+      if (isLeaf(lastLayer[0])) break;
       else {
         for (let frame of lastLayer) {
           assert(frame.getAttribute("class") == "frame");
@@ -656,33 +692,34 @@ function incDepth() {
   let layers = getLayers();
   let leaves = layers[layers.length - 1];
   for (let leaf of leaves) {
-    leaf.appendChild( makeLayer(0) )}
-  treeDepth++;}
+    leaf.appendChild( makeLayer(activeFrames(), 0) )}
+  treeDepth++;
+  // Update the UI
+  let btn = document.getElementById("dec-depth-btn");
+  btn.disabled = false;}
 
+/** Decrement the current frame count */
+function decDepth() {
+  assert(treeDepth > 1);
+  let layers = getLayers();
+  // Again, there's a space case when there's no nested frame
+  if (layers.length > 1) {
+    for (let frame of layers[layers.length-2])
+      frameNested(frame).remove();
+    for (let frame of activeFrames())
+      frame.cleanUpLeaves();}
+
+  treeDepth--;
+  // Change the UI
+  let btn = document.getElementById("dec-depth-btn");
+  if (treeDepth <= 1) {btn.disabled = true;}}
+
+// What happens when the user clicks the "create button"
 function newShape(type, mold) {
   let s = new Shape(type, mold);
-  s.register();  // Put all the control stuff in the DOM
-  let layers = getLayers();
-  if (type == "frame") {
-    // Include this frame in the frameList first, so it will include itself
-    frameList.push(s);
-    if (activeFrames().length == 1) {// If the frame list was empty before
-      s.newView(frameNested(root), treeDepth-1)}
-    else {
-      var depth = 0;
-      // Exclude the last item
-      for (let layer of layers.slice(0,-1)) {
-        for (let frame of layer) {
-          assert(frame.getAttribute("class") == "frame");
-          s.newView(frameNested(frame), treeDepth-depth-1);}
-        depth++;}}}
-
-  else {// None-frames
-    for (let layer of layers) {
-      for (let frame of layer) {
-        s.newView(frameShapes(frame))}}
-    shapeList.push(s);}
-
+  s.register();  // Put controls & views in the DOM
+  if (type == "frame") frameList.push(s)
+  else shapeList.push(s);
   issueCmd({action:"create", shape:s});}
 
 {// The DOM
@@ -763,6 +800,7 @@ function newShape(type, mold) {
                e("button", {onClick: (evt) => {newShape("frame")}},
                  [et("Frame")]),
 
+               e("span", {}, [et(" | ")]),
                // Save to file
                e("button", {onClick:(evt) => saveDiagram()},
                  [et("Save")]),
@@ -770,8 +808,17 @@ function newShape(type, mold) {
                e("button", {onClick:(evt) => triggerUpload()},
                  [et("Load")]),
 
+               e("span", {}, [et(" | ")]),
                // Undo/Redo buttons
-               undoBtn, redoBtn]);
+               undoBtn, redoBtn,
+
+               e("span", {}, [et(" | ")]),
+               // Changing depth
+               e("button", {onclick:(evt) => incDepth()},
+                 [et("Depth++")]),
+               e("button", {id:"dec-depth-btn",
+                            onclick:(evt) => decDepth()},
+                 [et("Depth--")])]);
   app.appendChild(UI);
   app.appendChild(svg_el);
   // SVG panzoom only works with whole SVG elements

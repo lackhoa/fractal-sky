@@ -1,10 +1,13 @@
-- Implement the old controls
-+ My control scheme is flawed at extreme rotations: such as 45ᵒ
-- Allow changing levels arbitrarily
-- Add "send-to-front/back"
-- Change properties like stroke, stroke-width and fill: go for the side-panel first, before drop-down context menu
+- Changing tree depth arbitrarily
++ add control for that
+- We need infinite grid
+- Add triangles
 - Add copy/paste
-- Turn off grid & axes
-- Allow flipping
+- Change properties like "stroke", "stroke-width" and "fill": go for the side-panel first, before drop-down context menu
+- Send shapes to front/back
++ We really gotta design for this!
++ Use "el.insertAdjacentHTML("afterend")" or "insertBefore(el)"
++ But what about echos, though?
+- Menu to turn off grid & axes
 
 ? Remove box highlight for focused shapes
