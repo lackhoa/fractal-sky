@@ -32,3 +32,13 @@ function es(tag, attrs={}, children=[]) {
 
 function et(text) {
   return document.createTextNode(text);}
+
+function insertAt(el, child, index) {
+  let len = el.children.length;
+  if (index < len) {
+    el.insertBefore(child, el.children[index]);}
+  else if (index == len || index == null) {
+    el.appendChild(child);}
+  else {
+    throw("Trying to insert at a weird index",
+          {childrenLength:len, index:index})}}

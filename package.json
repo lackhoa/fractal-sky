@@ -1,9 +1,10 @@
 {
   "name": "fractal-sky",
   "version": "1.0.0",
-  "description": "Build upon the \"FlowSharpWeb\" project written in this article: https://www.codeproject.com/Articles/1237571/Build-a-Prototype-Web-Based-Diagramming-App-with-S",
-  "main": "main.js",
+  "description": "A fractal drawing application",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -17,6 +18,7 @@
   },
   "homepage": "https://github.com/lackhoa/fractal-sky#readme",
   "dependencies": {
+    "express": "^4.17.1",
     "svg-pan-zoom": "^3.6.1"
   }
 }

@@ -1,4 +1,7 @@
-let fileInput = e("input", {type:"file", accept:".json", onChange:readSingleFile});
+"use strict";
+let fileInput = e("input", {type:"file",
+                            accept:".json",
+                            onChange:readSingleFile});
 // Gotta do this due to HTML BS
 function triggerUpload(evt) {fileInput.click()}
 
@@ -11,12 +14,12 @@ function serialize(shape) {
     return {...shape.model.getAll(),
             type:"shape", tag:shape.tag};}}
 
-// Load the saved contents
+// Load the saved contents to the DOM
 function loadComplete(evt) {
   let contents = JSON.parse(evt.target.result);
-  clearSvg();  // We DID clear the svg after parsing  the result!
+  clearSvg();  // Clear the svg only after successfully parsing the result!
   contents.map(({type, ...mold}) => {newShape(type, mold)});
-  // We don't allow undoing save/load for now (when'd you need that?)
+  // Don't allow undoing save/load for now (when'd you need that?)
   undoStack.length = 0;
   redoStack.length = 0;
   updateUndoUI();}
@@ -36,25 +39,17 @@ function removeChildren(node) {
 
 function clearSvg() {
   // Empty the DOM
-  for (s of shapeList.concat(frameList)) {
+  for (let s of shapeList.concat(frameList)) {
     s.deregister()}
-
-  // removeChildren(boxLayer);
-  // removeChildren(controlLayer);
-  // removeChildren(axesLayer);
-  // // The root still needs its shapes and frames
-  // removeChildren(frameShapes(root));
-  // removeChildren(frameNested(root));
-  // Empty the lists
   shapeList.length = 0;
   frameList.length = 0;}
 
 function saveDiagram() {
-  // Of course we only save active frames, shapes
+  // only save active frames, shapes
   let activeShapes = shapeList.filter((s) => s.isActive());
   let activeFrames = frameList.filter((f) => f.isActive());
-  let shapesJson = activeShapes.map((s) => serialize(s));
-  let framesJson = activeFrames.map((s) => serialize(s));
+  let shapesJson = activeShapes.map(serialize);
+  let framesJson = activeFrames.map(serialize);
   let json = shapesJson.concat(framesJson);
   let blob = new Blob([JSON.stringify(json)],
                       { "type":"text/json" });

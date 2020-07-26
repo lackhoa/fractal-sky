@@ -1,0 +1,11 @@
+- Send shapes to front/back
+- We need infinite grid
+- Calculate the svg size so that it fits
+- Add a background area, so users know what's going on
+- Add triangles
+- Add copy/paste
+- Change properties like "stroke", "stroke-width" and "fill": go for the side-panel first, before drop-down context menu
+- Menu to turn off grid & axes
+- Remove box highlight for focused shapes, for filling
+- Try the compositional transform again
+- Axes somehow must have a consistent relation to shapes
