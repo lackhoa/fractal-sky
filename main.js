@@ -4,7 +4,7 @@ let assert = console.assert;
 let entries = Object.entries;
 
 // Translation is applied to both the surface and the shapes
-// Shapes are under 2 translations: by the view and by user's arrangement
+// Shapes are under 2 translations: by the view and by user's edit
 var panZoom;  // A third-party svg pan-zoom thing
 var svg_el;  // The main svg element of the app
 
@@ -40,15 +40,18 @@ function DLList(First, Last) {
   this.getLast  = () => last;
 
   function insertBefore(item, next) {
+    // "next" is desired "item.next"
     item.next = next;
+    let prev;  // Desired "item.prev"
     if (next == first) {first = item;}
     if (next) {
-      item.prev = next.prev;
+      prev = next.prev;
       next.prev = item;}
-    else {// next is null
-      item.prev = last;
-      if (last) {last.next = item;}
-      last = item;}}
+    else {// next is null: item is last
+      prev = last;
+      last = item;}
+    item.prev = prev;
+    if (prev) {item.prev.next = item}}
   this.insertBefore = insertBefore;
 
   function remove(item) {
@@ -60,15 +63,13 @@ function DLList(First, Last) {
 
   function list() {
     let res = [];
-    if (first) {
-      var it = first;
-      while(it) {
-        res.push(it);
-        it = it.next;}}
+    for (let it = first; it; it = it.next) {
+      res.push(it)}
     return res;}
   this.list = list;}
-let shapeList = new DLList();
-let frameList = new DLList();
+let shapeList = new DLList();  // Active shapes only
+let frameList = new DLList();  // Active frames only
+
 
 // Store them, so they won't change
 let [W, H] = [window.innerWidth, window.innerHeight];
@@ -121,6 +122,9 @@ function undo() {
   case "edit":
     setEntity(cmd.entity, cmd.before);
     break;
+  case "arrange":
+    arrange(cmd.entity, cmd.oldNext);
+    break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
   updateUndoUI();}
@@ -137,6 +141,9 @@ function redo() {
     break;
   case "edit":
     setEntity(cmd.entity, cmd.after);
+    break;
+  case "arrange":
+    arrange(cmd.entity, cmd.newNext);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -168,26 +175,30 @@ function arrowMove([dx,dy]) {
 // Handling keyboard events
 let keymap = {"ctrl-z": tryUndo,
               "ctrl-y": tryRedo,
-              "ArrowRight": (evt) => arrowMove([10,  0]),
-              "ArrowUp": (evt)    => arrowMove([0,   -10]),
-              "ArrowDown": (evt)  => arrowMove([0,   10]),
-              "ArrowLeft": (evt)  => arrowMove([-10, 0]),
+              "ArrowRight": () => arrowMove([10,  0]),
+              "ArrowUp":    () => arrowMove([0,   -10]),
+              "ArrowDown":  () => arrowMove([0,   10]),
+              "ArrowLeft":  () => arrowMove([-10, 0]),
               "Delete": () => {
                 let focused = getFocused();
                 if (focused) {
                   deregister(focused);
                   let list = (focused.type == "shape") ? shapeList : frameList;
                   list.remove(focused);  // Remove the shape
-                  issueCmd({action:"remove", entity:focused})}},}
+                  issueCmd({action:"remove", entity:focused})}},
+              "ctrl-shift-{": sendToBack,
+              "ctrl-[":       sendBackward,
+              "ctrl-]":       sendForward,
+              "ctrl-shift-}": sendToFront}
 window.onkeydown = (evt) => {
-  let keys = [];
-  if (evt.ctrlKey) {keys.push("ctrl")}
-  if (evt.shiftKey) {keys.push("shift")}
-  keys.push(evt.key);
-  let lookup = keymap[keys.join("-")];
+  var keys = "";
+  if (evt.ctrlKey) {keys = "ctrl-"}
+  if (evt.shiftKey) {keys += "shift-"}
+  keys += evt.key;
+  let lookup = keymap[keys];
   if (lookup) {
     evt.preventDefault();// Arrow keys scroll the window, we don't want that
-    lookup()};}
+    lookup();}}
 
 var DOMRoot, controlLayer, boxLayer, axesLayer;
 
@@ -696,6 +707,47 @@ function addEntity(type, data) {
   else {registerFrame(entity);}
   issueCmd({action:"create", entity});}
 
+function arrange(entity, next) {
+  deregister(entity);
+  entity.next = next;
+  register(entity);}
+
+function arrangeUndoable(entity, newNext) {
+  let oldNext = entity.next;
+  arrange(entity, newNext);
+  issueCmd({action:"arrange", entity, oldNext, newNext})}
+
+function sendToBack() {
+  let focused = getFocused();
+  if (focused) {
+    if (focused.prev) {
+      if (focused.type == "shape") {
+        arrangeUndoable(focused, shapeList.getFirst());}
+      else {
+        arrangeUndoable(focused, frameList.getFirst());}
+      focus(focused);}}}
+
+function sendBackward() {
+  let focused = getFocused();
+  if (focused) {
+    if (focused.prev) {
+      arrangeUndoable(focused, focused.prev);
+      focus(focused);}}}
+
+function sendForward() {
+  let focused = getFocused();
+  if (focused) {
+    if (focused.next) {
+      arrangeUndoable(focused, focused.next.next);
+      focus(focused);}}}
+
+function sendToFront() {
+  let focused = getFocused();
+  if (focused) {
+    if (focused.next) {
+      arrangeUndoable(focused, null);
+      focus(focused);}}}
+
 {// The DOM
   let tile = es("pattern", {id:"tile",
                             width:100, height:100, patternUnits:"userSpaceOnUse"},
@@ -771,10 +823,10 @@ function addEntity(type, data) {
                  [et("Rectangle")]),
                e("button", {onClick: (evt) => {addEntity("shape", circMold)}},
                  [et("Circle")]),
-               e("button", {onClick: (evt) => {addEntity("shape", lineMold)}},
-                 [et("Line")]),
                e("button", {onClick: (evt) => {addEntity("shape", trigMold)}},
                  [et("Triangle")]),
+               e("button", {onClick: (evt) => {addEntity("shape", lineMold)}},
+                 [et("Line")]),
                e("button", {onClick: (evt) => {addEntity("frame")}},
                  [et("Frame")]),
 
@@ -811,22 +863,13 @@ function addEntity(type, data) {
 
                e("span", {}, [et(" | ")]),
                // Shape order
-               e("button", {onclick: (evt) => {
-                 let focused = getFocused();
-                 if (focused) {
-                   deregister(focused);
-                   if (focused.type == "shape") {
-                     focused.next = shapeList.getFirst();}
-                   else {
-                     focused.next = frameList.getFirst();}
-                   register(focused);
-                   focus(focused)}}},
+               e("button", {onclick: sendToBack},
                  [et("Send to back")]),
-               e("button", {onclick: (evt) => {}},
+               e("button", {onclick: sendBackward},
                  [et("Send backward")]),
-               e("button", {onclick: (evt) => {}},
+               e("button", {onclick: sendForward},
                  [et("Send forward")]),
-               e("button", {onclick: (evt) => {}},
+               e("button", {onclick: sendToFront},
                  [et("Send to front")]),
              ]);
   app.appendChild(UI);
