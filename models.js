@@ -12,10 +12,10 @@ let trigMold = {...commonMold, tag:"path",
                 d:"M 0.5 0 L 0 1 H 1 Z", fill:shapeFill};
 let lineMold = {...commonMold, tag: "line"};
 let lineBoxMold = {...lineMold, class:"line-box-mold",
-                   "stroke-width":20, stroke:HL_COLOR};
+                   "stroke-width":20, stroke:"transparent"};
 
 let boxMold = {...commonMold, class:"box-mold", tag:"rect",
-               width:1, height:1, fill:HL_COLOR, stroke:"transparent"};
+               width:1, height:1, fill:"transparent", stroke:"transparent"};
 let cornerWidth = 20;
 let cornerMold = {...commonMold, tag:"circle", r:cornerWidth/2,
                   fill:"transparent", stroke:"red", cursor:"move"};

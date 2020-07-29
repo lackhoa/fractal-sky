@@ -1,4 +1,4 @@
-- Send shapes to front/back
+- Make undo work with layer
 - We need infinite grid
 - Calculate the svg size so that it fits
 - Add a background area, so users know what's going on

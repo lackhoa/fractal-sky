@@ -27,7 +27,6 @@ let getMousePos, getPrevMousePos, recordMouse;
 
   recordMouse = (evt) => {
     prevMousePos = mousePos;
-    // @Fix: Urgh, this is not it! evt.x refers to screen coordinate
     mousePos = svgCoor([evt.x, evt.y]);}}
 
 function mouseOffset() {
@@ -40,24 +39,22 @@ function DLList(First, Last) {
   this.getFirst = () => first;
   this.getLast  = () => last;
 
-  function insertAfter(item, previous) {
-    item.prev = previous;
-    if (previous == last) {// previous is last, so item is last
-      last = item;}
-    if (previous) {
-      item.next = previous.next;
-      previous.next = item;}
-    else {// previous is null, then it's the first
-      item.next = first;
-      if (first) {
-        first.prev = item;
-        first = item;}}}
-  this.insertAfter = insertAfter;
+  function insertBefore(item, next) {
+    item.next = next;
+    if (next == first) {first = item;}
+    if (next) {
+      item.prev = next.prev;
+      next.prev = item;}
+    else {// next is null
+      item.prev = last;
+      if (last) {last.next = item;}
+      last = item;}}
+  this.insertBefore = insertBefore;
 
   function remove(item) {
-    if (item.prev) {prev.next = item.next;}
+    if (item.prev) {item.prev.next = item.next;}
     else {first = item.next;}
-    if (item.next) {next.prev = item.prev;}
+    if (item.next) {item.next.prev = item.prev;}
     else {last = item.prev;}}
   this.remove = remove;
 
@@ -116,13 +113,13 @@ function undo() {
   redoStack.push(cmd);
   switch (cmd.action) {
   case "create":
-    deregister(cmd.shape);  // The shape is still there, just register it
+    deregister(cmd.entity);
     break;
   case "remove":
-    register(cmd.shape);
+    register(cmd.entity);
     break;
   case "edit":
-    cmd.shape.model.set(cmd.before);
+    setEntity(cmd.entity, cmd.before);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -133,13 +130,13 @@ function redo() {
   undoStack.push(cmd);
   switch (cmd.action) {
   case "create":
-    register(cmd.shape);  // The shape is still there, just register it
+    register(cmd.entity);
     break;
   case "remove":
-    deregister(cmd.shape);
+    deregister(cmd.entity);
     break;
   case "edit":
-    setEntity(cmd.shape, cmd.after);
+    setEntity(cmd.entity, cmd.after);
     break;
   default: throw("Illegal action", cmd.action)}
   log({undo: undoStack, redo: redoStack});
@@ -151,15 +148,13 @@ let getFocused, focus, unfocus;
 
  focus = (entity) => {
    if (focused != entity) {
-     if (focused) {unfocus(entity)}
-     focused = entity;
-     highlight(entity);
-     setAttr(entity.controls, {visibility: "visible"});}}
+     if (focused) {unfocus(focused)}
+     setAttr(entity.controls, {visibility: "visible"});
+     focused = entity;}}
 
  unfocus = (entity) => {
    // Make sure an entity isn't focused
    if (focused == entity) {
-     unhighlight(entity);
      setAttr(entity.controls, {visibility: "hidden"});
      focused = null;}}}
 
@@ -200,6 +195,7 @@ function Entity(type, data={}) {
   // Create a shape structure, or a frame structure depend on "type"
   // Note: everything is public
   // The data contains the DOM tag and initial attributes
+  let self = this;
   assert(type == "shape" || type == "frame");
   this.type = type;
   if (type == "frame") {
@@ -249,22 +245,22 @@ function Entity(type, data={}) {
       evt.cancelBubble = true;  // Cancel bubble, so svg won't get pan/zoom event
       recordMouse(evt);
       // One entity have many controls
-      this.moveFn = fn;}}
+      self.moveFn = fn;}}
 
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
   let bMold = (tag == "line") ? lineBoxMold : boxMold;
   let box = es(
     bMold.tag,
-    {...bMold, visibility: "hidden",
+    {...bMold,
      // Allways handle mouse event, visible or not
      "pointer-events": "all",
-     onMouseEnter: (evt) => {if (evt.buttons == 0) highlight(this)},
+     onMouseEnter: (evt) => {if (evt.buttons == 0) {highlight(this)}},
      // The mouse can leave a shape and still be dragging it
-     onMouseLeave: () => {if (this != getFocused()) {unhighlight(this)}},
-     onMouseDown: () => {focus(this);
-                         // @Todo: it's kinda weird, as "entity" is always "this"
-                         ctrOnMouseDown((entity, evt) =>
-                                        moveEntity(this, mouseOffset())(evt));}});
+     onMouseLeave: () => {unhighlight(this)},
+     onMouseDown: (evt) => {focus(this);
+                            // @Todo: it's kinda weird, as "entity" is always "this"
+                            ctrOnMouseDown((entity) =>
+                                           moveEntity(entity, mouseOffset()))(evt);}});
   this.box = box;
 
   let ctag = cornerMold.tag;
@@ -296,11 +292,16 @@ function Entity(type, data={}) {
                      {onMouseDown:
                       (evt) => {
                         // Let the pivot be at the center of the shape
+                        {recordMouse(evt);
+                         controlChanged = true;
+                         evt.cancelBubble = true;}
+                        let tform = self.model.transform;
                         let [ox,oy] = transform(tform, [0.5,0.5]);
                         let [x,y] = getMousePos();
                         let pivot = [ox,oy];
                         let angle = Math.atan2(y-oy, x-ox);
-                        ctrOnMouseDown(makeRotator(pivot, tform, angle))(evt);},
+                        // One entity have many controls
+                        self.moveFn = makeRotator(pivot, tform, angle);},
                       // Note: "vector-effect" is not inherited from "<g>"
                       stroke:"red", cursor:"move"},
                      // Specified in 0-1 coord
@@ -358,15 +359,15 @@ function updateTransform(entity, v) {
   setAttr(entity.i_ijCtr, {cx:a+c/2+e, cy:b+d/2+f});
   setAttr(entity.j_ijCtr, {cx:a/2+c+e, cy:b/2+d+f});}
 
-function endpoint1Md(entity) {
-  let {x1,y1} = entity.model.getAll();
+function endpoint1Move(line) {
+  let {x1,y1} = line.model.getAll();
   let [dx,dy] = mouseOffset();
-  setUndoable(entity, {x1:x1+dx, y1:y1+dy});}
+  setUndoable(line, {x1:x1+dx, y1:y1+dy});}
 
-function endpoint2Md(entity) {
-  let {x2,y2} = entity.model.getAll();
+function endpoint2Move(line) {
+  let {x2,y2} = line.model.getAll();
   let [dx,dy] = mouseOffset();
-  setUndoable(entity, {x2:x2+dx, y2:y2+dy});}
+  setUndoable(line, {x2:x2+dx, y2:y2+dy});}
 
 function makeRotator([ox,oy], rotMatrix, rotAngle) {
   return (entity) => {
@@ -375,7 +376,6 @@ function makeRotator([ox,oy], rotMatrix, rotAngle) {
                          translate(rotate(translate(rotMatrix, [-ox,-oy]),
                                           (Math.atan2(y-oy,x-ox) - rotAngle)),
                                    [ox,oy])})}}
-
 
 function oMove(entity, evt) {
   let [a,b,c,d,e,f] = entity.model.transform;
@@ -473,11 +473,16 @@ function deregister(entity) {
   // Remove from DOM, the shape's still around for undo/redo
   unfocus(entity);
   entity.active = false;
-  for (let {el} of entity.views) { el.remove() }
-  entity.views.length = 0;  // The views will be re-created anew when registered
+  for (let {el} of getViews(entity)) {
+    el.remove()}
+  entity.viewLayers.length = 0;  // views will be re-created when re-registered
   entity.controls.remove();
   entity.box.remove();
-  if (entity.type == "frame") { entity.axes.remove() }}
+  if (entity.type == "frame") {
+    entity.axes.remove();
+    frameList.remove(entity);}
+  else {
+    shapeList.remove(entity);}}
 
 function moveLine(line, [dx,dy]) {
   let {x1,y1,x2,y2} = model;
@@ -513,20 +518,30 @@ function getLayers() {
   res.concat(nestedLayers);
   return res;}
 
+function register(entity) {
+  if (entity.type == "shape") {registerShape(entity)}
+  else {registerFrame(entity)}}
+
 function registerShape(shape) {
-  // "shape" should have its index value initialized already
+  // "shape" should have its list context initialized already
+  shapeList.insertBefore(shape, shape.next);
   controlLayer.appendChild(shape.controls);
   boxLayer.insertBefore(shape.box, (shape.next ? shape.next.box : null));
-  {let layers = getLayers();
-   var depth = 0;
-   for (let layer of layers) {
-     for (let frame of layer) {
-       newShapeView(shape, frameShapes(frame), depth);}
-     depth++;}}
+  if (shape.next) {
+    for (let layer of shape.next.viewLayers) {
+      for (let {el, parent, depth} of layer) {
+        newShapeView(shape, parent, el, depth)}}}
+  else {// We got no shape yet, can't do a free-ride here
+    newShapeView(shape, DOMRoot, null, 0);
+    for (let frame of frameList.list()) {
+      for (let layer of frame.viewLayers) {
+        for (let {el, depth} of layer) {
+          newShapeView(shape, frameShapes(el), null, depth);}}}}
   shape.active = true;}
 
 function registerFrame(frame) {
-  // "frame" should have its index value initialized already
+  // "frame" should have its list context initialized already
+  frameList.insertBefore(frame, frame.next);
   controlLayer.appendChild(frame.controls);
   insertAt(boxLayer, frame.box, index);
   assert(getViews(frame).length == 0);
@@ -555,11 +570,11 @@ function setEntity(entity, attrs) {
 
   if (entity.tag == "line") {
     let line = entity;
-    for (let [k,v] of entries(entity.model)) {
+    for (let [k,v] of entries(line.model)) {
       for (let {el} of getViews(line)) {
         setAttr(el, {[k]: v})}
       if (["x1", "y1", "x2", "y2"].includes(k)) {
-        setAttr(box, {[k]: v});
+        setAttr(line.box, {[k]: v});
         switch (k) {
         case "x1": setAttr(line.endpoint1, {cx: v}); break;
         case "y1": setAttr(line.endpoint1, {cy: v}); break;
@@ -586,32 +601,41 @@ function setUndoable(entity, attrs) {
   for (let k in attrs) {before[k] = model[k]}
   issueCmd({entity, action:"edit", before, after:attrs});}
 
-function highlight(entity)   {setAttr(entity.box, {visibility: "visible"})}
-function unhighlight(entity) {setAttr(entity.box, {visibility: "hidden"})}
+function highlight(entity) {
+  if (entity.tag == "line") {
+    setAttr(entity.box, {stroke: HL_COLOR})}
+  else {
+    setAttr(entity.box, {fill: HL_COLOR})}}
+
+function unhighlight(entity) {
+  if (entity.tag == "line") {
+    setAttr(entity.box, {stroke: "transparent"})}
+  else {
+    setAttr(entity.box, {fill: "transparent"})}}
 
 function addEntityView(entity, el, parent, depth) {
   // Add a view to the correct layer
   let layers = entity.viewLayers;
-  // Pad the tree to fill "depth"
   if (layers.length < depth+1) {
+    // Pad the tree til "depth"
     for (let it = layers.length; it <= depth; it++) {
       layers.push([])}}
-  layers[depth].push({el, parent});}
+  assert(layers.length > depth);
+  layers[depth].push({el, parent, depth});}
 
 // Make a DOM element whose attribute is linked to the model
 // The index is the layer index, if it's null then append at the front
-function newShapeView(shape, parent, depth) {
+function newShapeView(shape, parent, nextView, depth) {
   let model = shape.model;
   assert(model, "Model is supposed to be initialized");
   let el = es(shape.tag, model);
-  parent.insertBefore(el, shape.next);
+  parent.insertBefore(el, nextView);
   addEntityView(shape, el, parent, depth);
   return el;}
 
 // Make a DOM element whose attribute is linked to the model
 function newFrameView(frame, parent, nextView, depth) {
   // Returns a <g> element whose transform is synced with the given frame
-  // If depth > 0, recurse down
   let [a,b,c,d,e,f] = frame.transform;
   let xform = frame.xform;
   let echos = es("g", {class:"frame-shapes"});
@@ -619,8 +643,8 @@ function newFrameView(frame, parent, nextView, depth) {
               [echos]);
   parent.insertBefore(el, nextView);
   for (let shape of shapeList.list()) {
-    newShapeView(shape, echos)}
-  // If this should be a branch: make a forest of nodes of the depth level
+    newShapeView(shape, echos, null, depth)}
+  // This is a branch: make a forest of nodes of the depth level
   if (depth > 0) {
     el.appendChild(makeLayer(depth-1));}
 
@@ -633,15 +657,15 @@ function frameNested(frame) {return frame.children[1]}
 function isLeaf(frame) {
   return (frame.getElementsByClassName("frame-nested").length == 0);}
 
-/** Make frames of "depth", then put them to a group. */
-function makeLayer(depth, frames, index) {
+function makeLayer(depth, frames) {
+  /** Make frames of "depth", then put them to a group. */
   let g = es("g", {class:"frame-nested"});
   for (let frame of frames) {
-    frame.newView(g, depth, frames, index)}
+    newFrameView(frame, g, null, depth)}
   return g;}
 
-/** Increment the current frame count */
 function incDepth() {
+  /** Increment the current frame count */
   let flist = frameList.list();
   for (let frame of flist) {
     let layers = frame.viewLayers;
@@ -650,29 +674,26 @@ function incDepth() {
       leaf.appendChild( makeLayer(0, flist) )}
     treeDepth++;}}
 
-/** Decrement the current frame count */
 function decDepth() {
-  assert(treeDepth > 0);
-  // Again, there's a space case when there's no nested frame
-  if (layers.length > 1) {
-    for (let frame of layers[layers.length-2])
-      frameNested(frame).remove();
+  /** Decrement the current frame count */
+  assert(treeDepth > 1);
+  // If there's no nested frame then no worries
+  if (flist.length > 1) {
     for (let frame of frameList.list()) {
-      for (let {el} of frame.viewLayers[treeDepth-2]) {
-        el.remove();}}}
-  frame.viewLayers.length = treeDepth-1;
+      let layers = frame.viewLayers;
+      layers[layers.length - 1].remove();
+      layers.length--;}
+    for (let shape of shapeList.list()) {
+      // We've already removed the shapes, but the reference persists
+      shape.viewLayers.length--;}}
   treeDepth--;}
 
 // What happens when the user clicks the "create button"
 function addEntity(type, data) {
   let entity = new Entity(type, data);
-  if (type == "shape") {
-    shapeList.insertAfter(entity, shapeList.getLast());
-    registerShape(entity);}
-  else {
-    frameList.insertAfter(entity, frameList.getLast());
-    registerFrame(entity);}
-  // new shapes get rendered to the front, so added to the back of the list
+  // New entities get rendered to the front, hence added to the back of the list
+  if (type == "shape") {registerShape(entity);}
+  else {registerFrame(entity);}
   issueCmd({action:"create", entity});}
 
 {// The DOM
@@ -794,12 +815,12 @@ function addEntity(type, data) {
                  let focused = getFocused();
                  if (focused) {
                    deregister(focused);
-                   let list =
-                       (focused.type == "frame") ? activeFrames() : activeShapes();
-                   list.splice(focused.index, 1)
-                   list.unshift(focused);
-                   focused.index = 0;
-                   register(focused);}}},
+                   if (focused.type == "shape") {
+                     focused.next = shapeList.getFirst();}
+                   else {
+                     focused.next = frameList.getFirst();}
+                   register(focused);
+                   focus(focused)}}},
                  [et("Send to back")]),
                e("button", {onclick: (evt) => {}},
                  [et("Send backward")]),
