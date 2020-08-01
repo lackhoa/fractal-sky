@@ -214,7 +214,8 @@ function Entity(type, data={}) {
       let keys = Object.keys(data);
       assert(keys.length <= 1);
       if (keys.length == 1) {assert(keys[0] == "xform")}}
-    var {tag, ...attrs} = {...frameMold, ...data};}
+    var tag = frameMold.tag;
+    var attrs = {...data};}
   else {
     var {tag, ...attrs} = data;}
   this.tag = tag;  // "tag" is the DOM tag
@@ -332,14 +333,14 @@ function Entity(type, data={}) {
   this.controls = controls;
 
   if (type == "frame") {
-    this.axes = es(tag, attrs)}
+    this.axes = es(tag, {...frameMold, ...attrs})}
 
   // "active" means the entity is shown / hasn't been deleted
   this.active = false;
 
   {this.model = {};
    if (type == "frame") {
-     let keys = Object.keys(attrs).length;
+     let keys = Object.keys(attrs);
      assert((keys.length == 1) && (keys[0] == "transform"))}
    // Initialize the model
    setEntity(this, attrs);}}
@@ -500,15 +501,15 @@ function moveLine(line, [dx,dy]) {
   setUndoable(entity, {x1:x1+dx, y1:y1+dy,
                        x2:x2+dx, y2:y2+dy});}
 
-function moveEntity2D(entity, [dx,dy]) {
+function moveEntity2D(entity, offset) {
   let m = entity.model.transform;
-  setUndoable(entity, {transform:translate(m, [dx,dy])});}
+  setUndoable(entity, {transform:translate(m, offset)});}
 
-function moveEntity(entity, [dx,dy]) {
+function moveEntity(entity, offset) {
   if (entity.model.tag == "line") {
-    moveLine(entity, [dx,dy])}
+    moveLine(entity, offset)}
   else {
-    moveEntity2D(entity, [dx,dy])}}
+    moveEntity2D(entity, offset)}}
 
 function zip(arrays) {
   let res = [];
@@ -543,7 +544,7 @@ function registerShape(shape) {
       for (let {el, parent, depth} of layer) {
         newShapeView(shape, parent, el, depth)}}}
   else {// We got no shape yet, can't do a free-ride here
-    newShapeView(shape, DOMRoot, null, 0);
+    newShapeView(shape, frameShapes(DOMRoot), null, 0);
     for (let frame of frameList.list()) {
       for (let layer of frame.viewLayers) {
         for (let {el, depth} of layer) {
@@ -554,34 +555,35 @@ function registerFrame(frame) {
   // "frame" should have its list context initialized already
   frameList.insertBefore(frame, frame.next);
   controlLayer.appendChild(frame.controls);
-  insertAt(boxLayer, frame.box, index);
+  if (frame.next) {
+    boxLayer.insertBefore(frame.box, frame.next.box);}
+  else {
+    boxLayer.appendChild(frame.box);}
   assert(getViews(frame).length == 0);
   axesLayer.appendChild(frame.axes);
   if ((!frame.prev) && (!frame.next)) {
     // If there were no nested frames before this then the DOM tree only had depth 0
     // Since it's pointless to have overlapping elements
-    newFrameView(frame, frameNested(DOMRoot), null, treeDepth-1)}
+    newFrameView(frame, frameNested(DOMRoot), null, 1, treeDepth-1)}
   else {
     if (frame.next) {
-      var depth = 0;
+      var depth = 1;
       for (let layer of frame.next.viewLayers) {
         for (let view of layer) {
-          newFrameView(frame, view.parent, view.el, depth)}
+          newFrameView(frame, view.parent, view.el, depth, treeDepth-depth)}
         depth++;}}
     else {// Exact same thing, but anchored based on the previous frame
-      var depth = 0;
+      var depth = 1;
       for (let layer of frame.prev.viewLayers) {
         for (let view of layer) {
-          newFrameView(frame, view.parent, null, depth)}
+          newFrameView(frame, view.parent, null, depth, treeDepth-depth)}
         depth++;}}}
   frame.active = true;}
 
 function setEntity(entity, attrs) {
-  entity.model = {...entity.model, ...attrs};
-
   if (entity.tag == "line") {
     let line = entity;
-    for (let [k,v] of entries(line.model)) {
+    for (let [k,v] of entries(attrs)) {
       for (let {el} of getViews(line)) {
         setAttr(el, {[k]: v})}
       if (["x1", "y1", "x2", "y2"].includes(k)) {
@@ -593,17 +595,23 @@ function setEntity(entity, attrs) {
         case "y2": setAttr(line.endpoint2, {cy: v}); break;}}}}
 
   else if (entity.type == "frame") {
-    for (let [k,v] of entries(entity.model)) {
+    let keys = Object.keys(attrs);
+    assert(keys.length <= 1);
+    if (keys.length == 1) {
+      let v = attrs.transform;
       updateTransform(entity, v);
-      setAttr(axes, {transform:v})
-      {let xform = [a/theD,b/theD, c/theD,d/theD, e,f];
+      setAttr(entity.axes, {transform:v})
+      {let xform = toXform(v);
        for (let {el} of getViews(entity)) {
          setAttr(el, {transform:xform})}}}}
   else {
-    for (let [k,v] of entries(entity.model)) {
+    for (let [k,v] of entries(attrs)) {
       for (let {el} of getViews(entity)) {
         setAttr(el, {[k]:v})}
-      if (k == "transform") {updateTransform(entity, v)}}}}
+      if (k == "transform") {
+        updateTransform(entity, v)}}}
+
+  entity.model = {...entity.model, ...attrs};}
 
 function setUndoable(entity, attrs) {
   setEntity(entity, attrs);
@@ -627,12 +635,13 @@ function unhighlight(entity) {
 function addEntityView(entity, el, parent, depth) {
   // Add a view to the correct layer
   let layers = entity.viewLayers;
-  if (layers.length < depth+1) {
+  let d = (entity.type == "frame") ? depth-1 : depth;
+  if (layers.length < d+1) {
     // Pad the tree til "depth"
-    for (let it = layers.length; it <= depth; it++) {
+    for (let it = layers.length; it <= d; it++) {
       layers.push([])}}
-  assert(layers.length > depth);
-  layers[depth].push({el, parent, depth});}
+  assert(layers.length > d);
+  layers[d].push({el, parent, depth});}
 
 // Make a DOM element whose attribute is linked to the model
 // The index is the layer index, if it's null then append at the front
@@ -644,22 +653,25 @@ function newShapeView(shape, parent, nextView, depth) {
   addEntityView(shape, el, parent, depth);
   return el;}
 
-// Make a DOM element whose attribute is linked to the model
-function newFrameView(frame, parent, nextView, depth) {
+function toXform([a,b,c,d,e,f]) {
+  return [a/theD,b/theD, c/theD,d/theD, e,f]}
+
+function newFrameView(frame, parent, nextView, depth, recurDepth) {
   // Returns a <g> element whose transform is synced with the given frame
-  let [a,b,c,d,e,f] = frame.transform;
-  let xform = frame.xform;
+  // "recurDepth" is how tall the tree is growing down, "depth" is the relative depth to the root
+  assert(depth > 0);  // Frame views never have depth 0
+  let tform = frame.model.transform;
   let echos = es("g", {class:"frame-shapes"});
-  let el = es("g", {class:"frame", transform:xform},
+  let el = es("g", {class:"frame", transform:toXform(tform)},
               [echos]);
-  parent.insertBefore(el, nextView);
   for (let shape of shapeList.list()) {
     newShapeView(shape, echos, null, depth)}
+  parent.insertBefore(el, nextView);
   // This is a branch: make a forest of nodes of the depth level
-  if (depth > 0) {
-    el.appendChild(makeLayer(depth-1));}
+  if (recurDepth > 0) {
+    el.appendChild(makeLayer(depth+1, recurDepth-1, frameList.list()));}
 
-  addEntityView(el, parent, depth);
+  addEntityView(frame, el, parent, depth);
   return el;}
 
 var treeDepth = 1;  // Depth of the deepest node
@@ -668,11 +680,11 @@ function frameNested(frame) {return frame.children[1]}
 function isLeaf(frame) {
   return (frame.getElementsByClassName("frame-nested").length == 0);}
 
-function makeLayer(depth, frames) {
-  /** Make frames of "depth", then put them to a group. */
+function makeLayer(depth, recurDepth, frames) {
+  /** Make group of frames of desired recurDepth. */
   let g = es("g", {class:"frame-nested"});
   for (let frame of frames) {
-    newFrameView(frame, g, null, depth)}
+    newFrameView(frame, g, null, depth, recurDepth)}
   return g;}
 
 function incDepth() {
@@ -680,23 +692,33 @@ function incDepth() {
   let flist = frameList.list();
   for (let frame of flist) {
     let layers = frame.viewLayers;
-    let leaves = layers[layers.length - 1];
-    for (let leaf of leaves) {
-      leaf.appendChild( makeLayer(0, flist) )}
-    treeDepth++;}}
+    // Leaves before the computation, but they might be braches in the transit
+    let leaves = layers[treeDepth - 1];
+    for (let {el} of leaves) {
+      assert(el.children.length == 1);
+      assert(el.children[0].classList.contains("frame-shapes"))
+      el.appendChild( makeLayer(treeDepth+1, 0, flist) )}}
+
+  treeDepth++;}
 
 function decDepth() {
   /** Decrement the current frame count */
-  assert(treeDepth > 1);
+  assert(treeDepth >= 2);
+  let flist = frameList.list();
   // If there's no nested frame then no worries
-  if (flist.length > 1) {
-    for (let frame of frameList.list()) {
+  if (flist.length > 0) {
+    for (let frame of flist) {
       let layers = frame.viewLayers;
-      layers[layers.length - 1].remove();
+      let len = layers.length;
+      assert(len >= 2);
+      for (let {el} of layers[len - 2]) {
+        assert(el.classList.contains("frame"));
+        frameNested(el).remove();}
       layers.length--;}
     for (let shape of shapeList.list()) {
       // We've already removed the shapes, but the reference persists
       shape.viewLayers.length--;}}
+
   treeDepth--;}
 
 // What happens when the user clicks the "create button"
@@ -789,7 +811,7 @@ function sendToFront() {
         evt.cancelBubble = true;}}}
 
   // This layer holds all the axes, so we can turn them all on/off
-  axesLayer = es("g", {id:"axes"},
+  axesLayer = es("g", {id:"axes-layer"},
                  [// The identity frame (decoration)
                    es("use", {id:"the-frame", href:"#frame",
                               transform:[theD,0, 0,theD, 0,0]})])

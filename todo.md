@@ -8,3 +8,4 @@
 - Remove box highlight for focused shapes, for filling
 - Try the compositional transform again
 - Axes somehow must have a consistent relation to shapes
+- Draw the y-axis to point up
