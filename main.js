@@ -167,9 +167,7 @@ let getFocused, focus, unfocus;
 
 function arrowMove([dx,dy]) {
   let focused = getFocused();
-  if (focused) {
-    (focused.tag == "")
-  }
+  if (focused) {moveEntity(focused, [dx,dy])}
   else {panZoom.panBy({x:-dx, y:-dy})}}
 
 // Handling keyboard events
@@ -200,7 +198,7 @@ window.onkeydown = (evt) => {
     evt.preventDefault();// Arrow keys scroll the window, we don't want that
     lookup();}}
 
-var DOMRoot, controlLayer, boxLayer, axesLayer;
+var DOMRoot, controlLayer, boxLayer, frameBoxLayer, axesLayer;
 
 function Entity(type, data={}) {
   // Create a shape structure, or a frame structure depend on "type"
@@ -260,13 +258,11 @@ function Entity(type, data={}) {
       self.moveFn = fn;}}
 
   // "Bounding box" of the shape, responsible for highlighting and receiving hover
-  let bMold = (tag == "line") ? lineBoxMold : boxMold;
+  let bMold = (type == "frame") ? frameBoxMold : (tag == "line") ? lineBoxMold : boxMold;
   let box = es(
     bMold.tag,
     {...bMold,
-     // Allways handle mouse event, visible or not
-     "pointer-events": "all",
-     onMouseEnter: (evt) => {if (evt.buttons == 0) {highlight(this)}},
+     onMouseEnter: (evt) => {highlight(this)},
      // The mouse can leave a shape and still be dragging it
      onMouseLeave: () => {unhighlight(this)},
      onMouseDown: (evt) => {focus(this);
@@ -556,9 +552,9 @@ function registerFrame(frame) {
   frameList.insertBefore(frame, frame.next);
   controlLayer.appendChild(frame.controls);
   if (frame.next) {
-    boxLayer.insertBefore(frame.box, frame.next.box);}
+    frameBoxLayer.insertBefore(frame.box, frame.next.box);}
   else {
-    boxLayer.appendChild(frame.box);}
+    frameBoxLayer.appendChild(frame.box);}
   assert(getViews(frame).length == 0);
   axesLayer.appendChild(frame.axes);
   if ((!frame.prev) && (!frame.next)) {
@@ -621,13 +617,17 @@ function setUndoable(entity, attrs) {
   issueCmd({entity, action:"edit", before, after:attrs});}
 
 function highlight(entity) {
-  if (entity.tag == "line") {
+  if (entity.type == "frame") {
+    setAttr(entity.box, {stroke: HL_COLOR})}
+  else if (entity.tag == "line") {
     setAttr(entity.box, {stroke: HL_COLOR})}
   else {
     setAttr(entity.box, {fill: HL_COLOR})}}
 
 function unhighlight(entity) {
-  if (entity.tag == "line") {
+  if (entity.type == "frame") {
+    setAttr(entity.box, {stroke: "transparent"})}
+  else if (entity.tag == "line") {
     setAttr(entity.box, {stroke: "transparent"})}
   else {
     setAttr(entity.box, {fill: "transparent"})}}
@@ -771,7 +771,7 @@ function sendToFront() {
       focus(focused);}}}
 
 {// The DOM
-  let tile = es("pattern", {id:"tile",
+  let tile = es("pattern", {id:"svg-tile",
                             width:100, height:100, patternUnits:"userSpaceOnUse"},
                 [es("rect", {width:100, height:100, fill:"none"}),
                  es("path", {d:"M 100 0 H 0 V 100",
@@ -797,7 +797,9 @@ function sendToFront() {
                [es("g", {class:"frame-shapes"}),
                 es("g", {class:"frame-nested"})]);
   controlLayer = es("g", {id:"controls"});
-  boxLayer = es("g", {id:"boxes"});
+  boxLayer = es("g", {id:"box-layer"});
+  frameBoxLayer = es("g", {id:"frame-box-layer"});
+
   // This is the only "onMouseMove" event
   function surfaceOnMouseMove(evt) {
     if (evt.buttons == 1) {
@@ -819,7 +821,7 @@ function sendToFront() {
   svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
               // "W+1" and "H+1" is to show the grid at the border
               // pan-zoom wrapper wrap around here
-              [es("g", {id:"surface",
+              [es("g", {id:"svg-surface",
                         onMouseMove: surfaceOnMouseMove,
                         onMouseUp: (evt) => {
                           controlChanged = true;
@@ -829,17 +831,17 @@ function sendToFront() {
                            if (focused) {unfocus(focused)}}
                           recordMouse(evt);}},
                   [// Definitions
-                    es("defs", {id:"defs"}, [tile, frameDef]),
+                    es("defs", {id:"svg-defs"}, [tile, frameDef]),
                     // The grid
-                    es("rect", {id:"grid",
+                    es("rect", {id:"svg-grid",
                                 width:2*W+1, height:2*H+1,
                                 // Offset so that things will be in the middle
                                 x:-W/2, y:-H/2,
-                                fill:"url(#tile)"}),
+                                fill:"url(#svg-tile)"}),
                     // Due to event propagation, events not handled by any shape will be handled by the surface
-                    DOMRoot, axesLayer, boxLayer, controlLayer])]);
+                    DOMRoot, axesLayer, boxLayer, frameBoxLayer, controlLayer])]);
 
-  let UI = e("div", {id:"UI"},
+  let UI = e("div", {id:"menu-bar"},
              [// Shape creation
                e("button", {onClick: (evt) => {addEntity("shape", rectMold)}},
                  [et("Rectangle")]),

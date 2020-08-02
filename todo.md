@@ -1,3 +1,6 @@
+- Fix the DOM arrangement
+- Fix lines
+- We need save/load back
 - We need infinite grid
 - Calculate the svg size so that it fits
 - Add a background area, so users know what's going on

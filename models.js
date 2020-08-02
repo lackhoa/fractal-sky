@@ -16,6 +16,9 @@ let lineBoxMold = {...lineMold, class:"line-box-mold",
 
 let boxMold = {...commonMold, class:"box-mold", tag:"rect",
                width:1, height:1, fill:"transparent", stroke:"transparent"};
+let frameBoxMold = {...commonMold, class:"frame-box-mold", tag:"rect",
+                    width:1, height:1, fill:"transparent", stroke:"transparent",
+                    "pointer-events":"stroke", "stroke-width":20, };
 let cornerWidth = 20;
 let cornerMold = {...commonMold, tag:"circle", r:cornerWidth/2,
                   fill:"transparent", stroke:"red", cursor:"move"};
