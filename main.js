@@ -227,17 +227,20 @@ function Entity(type, data={}) {
     if (type == "frame") {
       let xform = attrs.xform;
       if (xform) {
-        let [a,b,c,d,e,f] = attrs.xform;
-        attrs.transform = [a*theD,b*theD, c*theD,d*theD, e,f];}
+        let [a,b,c,d,e,f] = xform;
+        attrs.transform = [a*theD,b*theD, c*theD,d*theD, e,f];
+        delete attrs.xform;}
       else {
         let scale = 1/3;  // Scaling is applied by default
         attrs.transform = [theD*scale,0, 0,theD*scale,
                            (-dx+100+rx)/z, (-dy+100+ry)/z]}}
+
     else if (tag == "line") {
       if (!attrs.x1) {
         let X = (-dx+100+rx)/z;
         let Y = (-dy+100+ry)/z;
         [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [X,Y, X+100, Y+100]}}
+
     else if (!attrs.transform) {
       // panZoom's transform (svg → screen): V ➾ P(V) = zV+Δ (where Δ = [dx,dy])
       // Substituting (V - Δ/z + D/z) for V skews that result to zV+D (screen coord)
@@ -335,11 +338,14 @@ function Entity(type, data={}) {
   this.active = false;
 
   {this.model = {};
-   if (type == "frame") {
-     let keys = Object.keys(attrs);
-     assert((keys.length == 1) && (keys[0] == "transform"))}
+   if (type == "frame") {assertFrameModel(attrs);}
    // Initialize the model
    setEntity(this, attrs);}}
+
+function assertFrameModel(model) {
+  let keys = Object.keys(model);
+  assert(keys.length == 1);
+  assert(keys[0] == "transform");}
 
 function updateTransform(entity, v) {
   // transform is applied directly to the box
@@ -368,12 +374,12 @@ function updateTransform(entity, v) {
   setAttr(entity.j_ijCtr, {cx:a/2+c+e, cy:b/2+d+f});}
 
 function endpoint1Move(line) {
-  let {x1,y1} = line.model.getAll();
+  let {x1,y1} = line.model;
   let [dx,dy] = mouseOffset();
   setUndoable(line, {x1:x1+dx, y1:y1+dy});}
 
 function endpoint2Move(line) {
-  let {x2,y2} = line.model.getAll();
+  let {x2,y2} = line.model;
   let [dx,dy] = mouseOffset();
   setUndoable(line, {x2:x2+dx, y2:y2+dy});}
 
@@ -493,16 +499,16 @@ function deregister(entity) {
     shapeList.remove(entity);}}
 
 function moveLine(line, [dx,dy]) {
-  let {x1,y1,x2,y2} = model;
-  setUndoable(entity, {x1:x1+dx, y1:y1+dy,
-                       x2:x2+dx, y2:y2+dy});}
+  let {x1,y1,x2,y2} = line.model;
+  setUndoable(line, {x1:x1+dx, y1:y1+dy,
+                     x2:x2+dx, y2:y2+dy});}
 
 function moveEntity2D(entity, offset) {
   let m = entity.model.transform;
   setUndoable(entity, {transform:translate(m, offset)});}
 
 function moveEntity(entity, offset) {
-  if (entity.model.tag == "line") {
+  if (entity.tag == "line") {
     moveLine(entity, offset)}
   else {
     moveEntity2D(entity, offset)}}
@@ -595,6 +601,7 @@ function setEntity(entity, attrs) {
     assert(keys.length <= 1);
     if (keys.length == 1) {
       let v = attrs.transform;
+      assert(v);
       updateTransform(entity, v);
       setAttr(entity.axes, {transform:v})
       {let xform = toXform(v);
@@ -818,8 +825,7 @@ function sendToFront() {
                    es("use", {id:"the-frame", href:"#frame",
                               transform:[theD,0, 0,theD, 0,0]})])
 
-  svg_el = es("svg", {id:"svg", width:W+1, height:H+1, fill:"black"},
-              // "W+1" and "H+1" is to show the grid at the border
+  svg_el = es("svg", {id:"dom-svg"},
               // pan-zoom wrapper wrap around here
               [es("g", {id:"svg-surface",
                         onMouseMove: surfaceOnMouseMove,
@@ -899,7 +905,7 @@ function sendToFront() {
   app.appendChild(UI);
   app.appendChild(svg_el);
   // SVG panzoom only works with whole SVG elements
-  panZoom = svgPanZoom("#svg", {dblClickZoomEnabled: false,
-                                // Don't do any bullshit on startup
-                                fit:false, center:false});
+  panZoom = svgPanZoom("#dom-svg", {dblClickZoomEnabled: false,
+                                    // Don't do any bullshit on startup
+                                    fit:false, center:false});
   panZoom.pan({x:20, y:20});}
