@@ -5,11 +5,11 @@ FROM node:10
 WORKDIR /usr/src/app
 
 # Copy package files and install dependencies BEFORE copying the source code to optimize build time
-COPY package*.json ./
+COPY app/package*.json ./
 RUN npm install
 
-# Copy all of the app files into the image
-COPY . .
+# Copy all app files into the image
+COPY app/ .
 
 # The default command to run when starting the container
 CMD [ "npm", "start" ]
