@@ -8,3 +8,4 @@
 - Try the compositional transform again
 - Axes somehow must have a consistent relation to shapes
 - Draw the y-axis to point up
+- The panning is so darn laggy!
