@@ -1,5 +1,6 @@
 "use strict";
 let log = console.log;
+let debug = console.log;
 let assert = console.assert;
 let entries = Object.entries;
 
@@ -73,7 +74,7 @@ let frameList = new DLList();  // Active frames only
 
 // Store them, so they won't change
 let [W, H] = [window.innerWidth, window.innerHeight];
-let theD = Math.min(W,H) - (Math.min(W,H) % 100);  // theD is the dimension of "the-frame"
+let theD = 600;  // theD is the dimension of "the-frame"
 
 // Undo/Redo stuff
 // "undoStack" and "redoStack" are lists of commands
@@ -778,10 +779,11 @@ function sendToFront() {
       focus(focused);}}}
 
 {// The DOM
+  let tileDimension = 100;
   let tile = es("pattern", {id:"svg-tile",
-                            width:100, height:100, patternUnits:"userSpaceOnUse"},
-                [es("rect", {width:100, height:100, fill:"none"}),
-                 es("path", {d:"M 100 0 H 0 V 100",
+                            width:tileDimension, height:tileDimension, patternUnits:"userSpaceOnUse"},
+                [es("rect", {width:tileDimension, height:tileDimension, fill:"none"}),
+                 es("path", {d:`M ${tileDimension} 0 H 0 V ${tileDimension}`,
                              fill:"none", stroke:"#777777", "stroke-width":2})]);
   let frameStroke = {"vector-effect":"non-scaling-stroke",
                      fill:"transparent", "stroke-width":3};
@@ -807,45 +809,51 @@ function sendToFront() {
   boxLayer = es("g", {id:"box-layer"});
   frameBoxLayer = es("g", {id:"frame-box-layer"});
 
-  // This is the only "onMouseMove" event
-  function surfaceOnMouseMove(evt) {
-    if (evt.buttons == 1) {
-      recordMouse(evt);
-      let focused = getFocused();
-      if (focused &&
-          ((evt.movementX != 0) || (evt.movementY != 0))) {
-        // If dragging & there's a listener, we checked for zero since there's a bug with "ctrl+click" that triggerse this event, even when there's no movement
-        focused.moveFn(focused, evt);
-        // Cancel bubble, so svg won't get pan/zoom event
-        evt.cancelBubble = true;}}}
-
   // This layer holds all the axes, so we can turn them all on/off
-  axesLayer = es("g", {id:"axes-layer"},
+  axesLayer = es("g",
+                 {id:"axes-layer"},
                  [// The identity frame (decoration)
                    es("use", {id:"the-frame", href:"#frame",
                               transform:[theD,0, 0,theD, 0,0]})])
 
+  let theGrid = es("rect",
+                   {id:"svg-grid",
+                    width:W+2*tileDimension, height:H+2*tileDimension,
+                    // Offset so that things will be in the middle
+                    x:-tileDimension, y:-tileDimension,
+                    fill:"url(#svg-tile)"})
+
   svg_el = es("svg", {id:"dom-svg"},
-              // pan-zoom wrapper wrap around here
-              [es("g", {id:"svg-surface",
-                        onMouseMove: surfaceOnMouseMove,
-                        onMouseUp: (evt) => {
-                          controlChanged = true;
-                          recordMouse(evt);},
-                        onMouseDown: (evt) => {
-                          {let focused = getFocused();
-                           if (focused) {unfocus(focused)}}
-                          recordMouse(evt);}},
-                  [// Definitions
-                    es("defs", {id:"svg-defs"}, [tile, frameDef]),
-                    // The grid
-                    es("rect", {id:"svg-grid",
-                                width:2*W+1, height:2*H+1,
-                                // Offset so that things will be in the middle
-                                x:-W/2, y:-H/2,
-                                fill:"url(#svg-tile)"}),
-                    // Due to event propagation, events not handled by any shape will be handled by the surface
-                    DOMRoot, axesLayer, boxLayer, frameBoxLayer, controlLayer])]);
+              [// The surface
+                es("svg", {id:"svg-surface",
+                           onMouseMove: (evt) => {
+                             // This only triggers when a control is dragged
+                             if (evt.buttons == 1) {
+                               recordMouse(evt);
+                               let focused = getFocused();
+                               if (focused &&
+                                   ((evt.movementX != 0) || (evt.movementY != 0))) {
+                                 // If dragging & there's a listener
+                                 // Checked for zero since there's a bug with "ctrl+click" that triggerse this event, even when there's no movement
+                                 focused.moveFn(focused, evt);
+                                 // Cancel bubble, so svg won't get pan/zoom event
+                                 evt.cancelBubble = true;}}},
+
+                           onMouseUp: (evt) => {
+                             controlChanged = true;
+                             recordMouse(evt);},
+
+                           onMouseDown: (evt) => {
+                             {let focused = getFocused();
+                              if (focused) {unfocus(focused)}}
+                             recordMouse(evt);}},
+                   // pan-zoom wrapper wrap around here
+                   [// Definitions
+                     es("defs", {id:"svg-defs"}, [tile, frameDef]),
+                     // The grid
+                     theGrid,
+                     // Due to bubbling, events not handled by any shape will be handled by the surface
+                     DOMRoot, axesLayer, boxLayer, frameBoxLayer, controlLayer])]);
 
   let UI = e("div", {id:"menu-bar"},
              [// Shape creation
@@ -902,10 +910,23 @@ function sendToFront() {
                e("button", {onclick: sendToFront},
                  [et("Send to front")]),
              ]);
+
   app.appendChild(UI);
   app.appendChild(svg_el);
+
   // SVG panzoom only works with whole SVG elements
-  panZoom = svgPanZoom("#dom-svg", {dblClickZoomEnabled: false,
-                                    // Don't do any bullshit on startup
-                                    fit:false, center:false});
+  panZoom = svgPanZoom("#svg-surface",
+                       {dblClickZoomEnabled: false,
+                        // Don't do any bullshit on startup
+                        fit:false,
+                        center:false,
+                        onPan: () => {
+                          // Infinite grid illusion
+                          let {x,y} = panZoom.getPan();
+                          // `x` and `y` are correct to `modX` and `modY`
+                          let modX = x % tileDimension;
+                          let modY = y % tileDimension;
+                          theGrid.setAttribute("x", modX-x-tileDimension);
+                          theGrid.setAttribute("y", modY-y-tileDimension);
+                        }});
   panZoom.pan({x:20, y:20});}
