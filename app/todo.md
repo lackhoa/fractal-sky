@@ -1,10 +1,14 @@
+- Add copy/paste
+- We can add the option to draw only the leaves
+- Make move cursor smaller
 - Draw the y-axis to point up
 - Draw the frame boundary
 - We need menu
 - Add a "center" menu button, so that user will go back to land after zooming or drawing too much
 - Add UI for zoom
 - Add a background area, so users know what's going on
-- Add copy/paste
 - Change properties like "stroke", "stroke-width" and "fill": go for the side-panel first, before drop-down context menu
 - Try the compositional transform again
 - Axes somehow must have a consistent relation to shapes
+- Set up a simple help/shortcut menu
+- Default rectangle should be equilateral
