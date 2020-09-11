@@ -8,6 +8,7 @@ let entries = Object.entries;
 // Shapes are under 2 translations: by the view and by user's edit
 var panZoom;  // A third-party svg pan-zoom thing
 var svg_el;  // The main svg element of the app
+var areBranchesVisible = true;
 
 let getMousePos, getPrevMousePos, recordMouse;
 {// Keep track of mouse position (in svg coordinate).
@@ -24,7 +25,7 @@ let getMousePos, getPrevMousePos, recordMouse;
     // Undo further svg-pan-zoom's effect
     let z = panZoom.getZoom();
     let d = panZoom.getPan();
-    return [(x - d.x - e)/z, (y - d.y - f)/z];}
+    return [(x -d.x -e)/z, (y -d.y -f)/z];}
 
   recordMouse = (evt) => {
     prevMousePos = mousePos;
@@ -222,9 +223,8 @@ function Entity(type, data={}) {
 
   {// Calculating spawn location
     let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
-    let {x,y} = panZoom.getPan();
-    let [dx,dy] = [x,y];
-    let z = panZoom.getZoom();
+    let d = panZoom.getPan();
+    let zoom = panZoom.getZoom();
     if (type == "frame") {
       let xform = attrs.xform;
       if (xform) {
@@ -234,12 +234,12 @@ function Entity(type, data={}) {
       else {
         let scale = 1/3;  // Scaling is applied by default
         attrs.transform = [theD*scale,0, 0,theD*scale,
-                           (-dx+100+rx)/z, (-dy+100+ry)/z]}}
+                           (-d.x+100+rx)/zoom, (-d.y+100+ry)/zoom]}}
 
     else if (tag == "line") {
       if (!attrs.x1) {
-        let X = (-dx+100+rx)/z;
-        let Y = (-dy+100+ry)/z;
+        let X = (-d.x+100+rx)/zoom;
+        let Y = (-d.y+100+ry)/zoom;
         [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [X,Y, X+100, Y+100]}}
 
     else if (!attrs.transform) {
@@ -247,7 +247,7 @@ function Entity(type, data={}) {
       // Substituting (V - Δ/z + D/z) for V skews that result to zV+D (screen coord)
       let DEFAULT_DIM = 100;
       attrs.transform = [DEFAULT_DIM,0, 0,DEFAULT_DIM,
-                         (-dx+100+rx)/z, (-dy+100+ry)/z]}}
+                         (-d.x+100+rx)/zoom, (-d.y+100+ry)/zoom]}}
 
   // "moveFn" is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
   this.moveFn = null;
@@ -524,15 +524,6 @@ function zip(arrays) {
       res.push(layer);}}
   return res;}
 
-function getLayers() {
-  // Get view layers of all frames
-  let res = [[root]];
-  let flist = frameList.list();
-  let nestedLayers = (flist.length == 0) ?
-      [] : zip(flist.map(f => f.viewLayers));
-  res.concat(nestedLayers);
-  return res;}
-
 function register(entity) {
   if (entity.type == "shape") {registerShape(entity)}
   else {registerFrame(entity)}}
@@ -666,7 +657,8 @@ function toXform([a,b,c,d,e,f]) {
 
 function newFrameView(frame, parent, nextView, depth, recurDepth) {
   // Returns a <g> element whose transform is synced with the given frame
-  // "recurDepth" is how tall the tree is growing down, "depth" is the relative depth to the root
+  // "recurDepth" is how tall the tree is growing down,
+  // "depth" is the relative depth to the root
   assert(depth > 0);  // Frame views never have depth 0
   let tform = frame.model.transform;
   let echos = es("g", {class:"frame-shapes"});
@@ -779,27 +771,6 @@ function sendToFront() {
       focus(focused);}}}
 
 {// The DOM
-  let tileDimension = 100;
-  let tile = es("pattern", {id:"svg-tile",
-                            width:tileDimension, height:tileDimension, patternUnits:"userSpaceOnUse"},
-                [es("rect", {width:tileDimension, height:tileDimension, fill:"none"}),
-                 es("path", {d:`M ${tileDimension} 0 H 0 V ${tileDimension}`,
-                             fill:"none", stroke:"#777777", "stroke-width":2})]);
-  let frameStroke = {"vector-effect":"non-scaling-stroke",
-                     fill:"transparent", "stroke-width":3};
-  // This is within 00-11 bound
-  let arr = 0.03;
-  let frameDef = es("g", {id:"frame", "vector-effect":"non-scaling-stroke"},
-                    [// This is i
-                      es("path", {...frameStroke, stroke:"red", d:`M 0 0 H 1`}),
-                      es("path", {...frameStroke, stroke:"red",
-                                  d:`M ${1-arr} ${-arr} L 1 0 L ${1-arr} ${arr}`,}),
-                      // This is j
-                      es("path", {...frameStroke, stroke:"green", d:`M 0 0 V 1`}),
-                      es("path", {...frameStroke, stroke:"green",
-                                  d:`M ${-arr} ${1-arr} L 0 1 L ${arr} ${1-arr}`}),
-                    ]);
-
   let app = document.getElementById("app");
   // The SVG Layers: also the root frame, with depth of 1 at first
   DOMRoot = es("g", {id:"root", class:"frame"},
@@ -816,11 +787,17 @@ function sendToFront() {
                    es("use", {id:"the-frame", href:"#frame",
                               transform:[theD,0, 0,theD, 0,0]})])
 
+  // If the minZoom is "0.5", the user can see 2× of W×H
+  // If the minZoom is "0.25", the user can see 4× of W×H
+  let gridWidth  = W/paramMinZoom;
+  let gridHeight = H/paramMinZoom;
   let theGrid = es("rect",
-                   {id:"svg-grid",
-                    width:W+2*tileDimension, height:H+2*tileDimension,
+                   {id: "svg-grid",
+                    width:  gridWidth  +2*tileDimension,
+                    height: gridHeight +2*tileDimension,
                     // Offset so that things will be in the middle
-                    x:-tileDimension, y:-tileDimension,
+                    // x: -tileDimension,
+                    // y: -tileDimension,
                     fill:"url(#svg-tile)"})
 
   svg_el = es("svg", {id:"dom-svg"},
@@ -832,7 +809,8 @@ function sendToFront() {
                                recordMouse(evt);
                                let focused = getFocused();
                                if (focused &&
-                                   ((evt.movementX != 0) || (evt.movementY != 0))) {
+                                   ((evt.movementX != 0) ||
+                                    (evt.movementY != 0))) {
                                  // If dragging & there's a listener
                                  // Checked for zero since there's a bug with "ctrl+click" that triggerse this event, even when there's no movement
                                  focused.moveFn(focused, evt);
@@ -848,12 +826,10 @@ function sendToFront() {
                               if (focused) {unfocus(focused)}}
                              recordMouse(evt);}},
                    // pan-zoom wrapper wrap around here
-                   [// Definitions
-                     es("defs", {id:"svg-defs"}, [tile, frameDef]),
-                     // The grid
-                     theGrid,
-                     // Due to bubbling, events not handled by any shape will be handled by the surface
-                     DOMRoot, axesLayer, boxLayer, frameBoxLayer, controlLayer])]);
+                   [es("defs", {id:"svg-defs"}, [tileDef, frameDef]),
+                    theGrid,
+                    // Due to bubbling, events not handled by any shape will be handled by the surface
+                    DOMRoot, axesLayer, boxLayer, frameBoxLayer, controlLayer])]);
 
   let UI = e("div", {id:"menu-bar"},
              [// Shape creation
@@ -898,6 +874,19 @@ function sendToFront() {
                  let V = (v == "visible") ? "hidden" : "visible";
                  setAttr(axesLayer, {visibility: V})}},
                  [et("Axes")]),
+               // Toggling braches visibility
+               e("button", {onclick: (evt) => {
+                 if (treeDepth > 1) {
+                   for (let shape of shapeList.list()) {
+                     let layers = shape.viewLayers;
+                     let branchLayers = layers.slice(0, layers.length-1);
+                     for (let layer of branchLayers) {
+                       for (let {el} of layer) {
+                         setAttr(el, {visibility: (areBranchesVisible ?
+                                                   "hidden" : "visible")})}}}}
+
+                 areBranchesVisible = !areBranchesVisible;}},
+                 [et("Branches")]),
 
                e("span", {}, [et(" | ")]),
                // Shape order
@@ -917,16 +906,18 @@ function sendToFront() {
   // SVG panzoom only works with whole SVG elements
   panZoom = svgPanZoom("#svg-surface",
                        {dblClickZoomEnabled: false,
-                        // Don't do any bullshit on startup
-                        fit:false,
-                        center:false,
-                        onPan: () => {
+                        // Don't do any BS on startup
+                        fit: false,
+                        center: false,
+                        onUpdatedCTM: () => {
                           // Infinite grid illusion
-                          let {x,y} = panZoom.getPan();
-                          // `x` and `y` are correct to `modX` and `modY`
-                          let modX = x % tileDimension;
-                          let modY = y % tileDimension;
-                          theGrid.setAttribute("x", modX-x-tileDimension);
-                          theGrid.setAttribute("y", modY-y-tileDimension);
-                        }});
+                          let d = panZoom.getPan();
+                          let pzZoom = panZoom.getZoom();
+                          theGrid.setAttribute("x", -d.x/pzZoom);
+                          theGrid.setAttribute("y", -d.y/pzZoom);
+                          log({pzx:d.x, pzy:d.y,
+                               x: theGrid.getAttribute("x"),
+                               y: theGrid.getAttribute("y"),});
+                        },
+                        minZoom: paramMinZoom,});
   panZoom.pan({x:20, y:20});}
