@@ -74,7 +74,7 @@ let frameList = new DLList();  // Active frames only
 
 
 // Store them, so they won't change
-let [W, H] = [window.innerWidth, window.innerHeight];
+let [windowWidth, windowHeight] = [window.innerWidth, window.innerHeight];
 let theD = 600;  // theD is the dimension of "the-frame"
 
 // Undo/Redo stuff
@@ -789,15 +789,10 @@ function sendToFront() {
 
   // If the minZoom is "0.5", the user can see 2× of W×H
   // If the minZoom is "0.25", the user can see 4× of W×H
-  let gridWidth  = W/paramMinZoom;
-  let gridHeight = H/paramMinZoom;
   let theGrid = es("rect",
                    {id: "svg-grid",
-                    width:  gridWidth  +2*tileDimension,
-                    height: gridHeight +2*tileDimension,
-                    // Offset so that things will be in the middle
-                    // x: -tileDimension,
-                    // y: -tileDimension,
+                    width:  windowWidth/paramMinZoom,
+                    height: windowHeight/paramMinZoom,
                     fill:"url(#svg-tile)"})
 
   svg_el = es("svg", {id:"dom-svg"},
@@ -913,11 +908,10 @@ function sendToFront() {
                           // Infinite grid illusion
                           let d = panZoom.getPan();
                           let pzZoom = panZoom.getZoom();
+                          // #note these don't affect the pattern inside
                           theGrid.setAttribute("x", -d.x/pzZoom);
                           theGrid.setAttribute("y", -d.y/pzZoom);
-                          log({pzx:d.x, pzy:d.y,
-                               x: theGrid.getAttribute("x"),
-                               y: theGrid.getAttribute("y"),});
+                          // #important The grid is still influenced by svgPanZoom
                         },
                         minZoom: paramMinZoom,});
   panZoom.pan({x:20, y:20});}

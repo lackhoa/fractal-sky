@@ -25,12 +25,12 @@ let cornerMold = {...commonMold, tag:"circle", r:cornerWidth/2,
 let frameMold = {tag:"use", href:"#frame"};
 
 // @Question: Not sure if these should be here?
-let paramMinZoom = 0.1;
+let paramMinZoom = 0.5;
 let tileDimension = 100;
 let tileDef = es("pattern", {id: "svg-tile",
-                             width: tileDimension,
-                             height:tileDimension,
-                             patternUnits:"userSpaceOnUse"},
+                             width:  tileDimension,
+                             height: tileDimension,
+                             patternUnits: "userSpaceOnUse"},
                  [es("rect", {width: tileDimension,
                               height:tileDimension,
                               fill:"none"}),

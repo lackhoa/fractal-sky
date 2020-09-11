@@ -1,7 +1,5 @@
-- Infinite grid doesn't work with zooming?
-- I need better colors right now: can't keep looking at this awful color
 - I need to see x, y and zoom
-- The axes shouldn't be on top of shapes, at least the root axes
+- The axes shouldn't be on top of shapes, at least the root ones
 - Add copy/paste
 - We can add the option to draw only the leaves
 - Make move cursor smaller
