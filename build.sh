@@ -1,4 +1,5 @@
 #!/bin/bash
+# Argument: the version number
 VERSION=$1
 # Build the container
 sudo docker build -t lackhoa/fractal-sky:$VERSION .

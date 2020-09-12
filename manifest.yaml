@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: fs-container
-        image: lackhoa/fractal-sky:0.1
+        image: lackhoa/fractal-sky:v0.2
         ports:
         - containerPort: 80
 ---
