@@ -1,5 +1,5 @@
+- I need hotkeys
 - I need to see x, y and zoom
-- The axes shouldn't be on top of shapes, at least the root ones
 - Add copy/paste
 - We can add the option to draw only the leaves
 - Make move cursor smaller

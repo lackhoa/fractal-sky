@@ -357,12 +357,13 @@ function updateTransform(entity, v) {
   let tr = [a+e,b+f];  // [a,b] + [e,f]
   let bl = [c+e,d+f];
   let br = [a+c+e,b+d+f];
-  // The rotator location
-  let w = cornerWidth / 2;
-  let dist = distance(tl, br);
-  setAttr(entity.rotCtr, {transform: [20,0, 0,20,
+  // Adjust the rotator location
+  let distTlBr = distance(tl, br);
+  let dist = 50;
+  setAttr(entity.rotCtr, {transform: [cornerWidth,0, 0,cornerWidth,
                                       // Rotator lines up with the tl and br corners
-                                      e-4*w*(a+c)/dist, f-4*w*(b+d)/dist]});
+                                      e -dist*(a+c)/distTlBr,
+                                      f -dist*(b+d)/distTlBr]});
   // The corners' locations
   setAttr(entity.oCtr,  {cx:tl[0], cy:tl[1]});
   setAttr(entity.iCtr,  {cx:tr[0], cy:tr[1]});
@@ -397,13 +398,13 @@ function oMove(entity, evt) {
   let m;
   if (evt.shiftKey) {
     let [x,y] = factor([a,b,c,d,e,f], getMousePos());
-    let s = 1 - Math.min(x,y);
+    let s = 1 -Math.min(x,y);
     m = [a*s,b*s, c*s,d*s, a+c+e-a*s-c*s,b+d+f-b*s-d*s];}
   else {
     // The fixed point is the bottom-right: [a+c+e, b+d+f]
     let [dx,dy] = mouseOffset();
-    let s = (+d*dx - c*dy)/(b*c - a*d) + 1
-    let t = (-b*dx + a*dy)/(b*c - a*d) + 1;
+    let s = (+d*dx -c*dy)/(b*c -a*d) + 1
+    let t = (-b*dx +a*dy)/(b*c -a*d) + 1;
     m = [s*a,s*b, t*c,t*d, a+c+e-s*a-t*c,b+d+f-s*b-t*d];}
 
   setUndoable(entity, {transform: m});}
@@ -543,7 +544,8 @@ function registerShape(shape) {
       for (let layer of frame.viewLayers) {
         for (let {el, depth} of layer) {
           newShapeView(shape, frameShapes(el), null, depth);}}}}
-  shape.active = true;}
+  shape.active = true;
+  applyBranchVisibility(areBranchesVisible);}
 
 function registerFrame(frame) {
   // "frame" should have its list context initialized already
@@ -572,7 +574,8 @@ function registerFrame(frame) {
         for (let view of layer) {
           newFrameView(frame, view.parent, null, depth, treeDepth-depth)}
         depth++;}}}
-  frame.active = true;}
+  frame.active = true;
+  applyBranchVisibility(areBranchesVisible);}
 
 function setEntity(entity, attrs) {
   if (entity.tag == "line") {
@@ -687,19 +690,32 @@ function makeLayer(depth, recurDepth, frames) {
     newFrameView(frame, g, null, depth, recurDepth)}
   return g;}
 
+function applyBranchVisibility(areBranchesVisible) {
+  /** Forcefully apply visibility */
+  for (let shape of shapeList.list()) {
+    let layers = shape.viewLayers;
+    var i = 0;
+    for (let layer of layers) {
+      for (let {el} of layer) {
+        if (areBranchesVisible || (i == layers.length-1)) {
+          setAttr(el, {visibility: "visible"})}
+        else {
+          setAttr(el, {visibility: "hidden"})}}
+      i++;}}}
+
 function incDepth() {
   /** Increment the current frame count */
   let flist = frameList.list();
   for (let frame of flist) {
     let layers = frame.viewLayers;
-    // Leaves before the computation, but they might be braches in the transit
+    // Leaves before the computation, but they might be branches in the transit
     let leaves = layers[treeDepth - 1];
     for (let {el} of leaves) {
       assert(el.children.length == 1);
       assert(el.children[0].classList.contains("frame-shapes"))
       el.appendChild( makeLayer(treeDepth+1, 0, flist) )}}
-
-  treeDepth++;}
+  treeDepth++;
+  applyBranchVisibility(areBranchesVisible);}
 
 function decDepth() {
   /** Decrement the current frame count */
@@ -718,8 +734,8 @@ function decDepth() {
     for (let shape of shapeList.list()) {
       // We've already removed the shapes, but the reference persists
       shape.viewLayers.length--;}}
-
-  treeDepth--;}
+  treeDepth--;
+  applyBranchVisibility(areBranchesVisible);}
 
 // What happens when the user clicks the "create button"
 function addEntity(type, data) {
@@ -781,11 +797,7 @@ function sendToFront() {
   frameBoxLayer = es("g", {id:"frame-box-layer"});
 
   // This layer holds all the axes, so we can turn them all on/off
-  axesLayer = es("g",
-                 {id:"axes-layer"},
-                 [// The identity frame (decoration)
-                   es("use", {id:"the-frame", href:"#frame",
-                              transform:[theD,0, 0,theD, 0,0]})])
+  axesLayer = es("g", {id:"axes-layer"})
 
   // If the minZoom is "0.5", the user can see 2× of W×H
   // If the minZoom is "0.25", the user can see 4× of W×H
@@ -795,6 +807,8 @@ function sendToFront() {
                     height: windowHeight/paramMinZoom,
                     fill:"url(#svg-tile)"})
 
+  let theFrameAxes = es("use", {id:"the-frame", href:"#frame",
+                                transform:[theD,0, 0,theD, 0,0]});
   svg_el = es("svg", {id:"dom-svg"},
               [// The surface
                 es("svg", {id:"svg-surface",
@@ -823,6 +837,8 @@ function sendToFront() {
                    // pan-zoom wrapper wrap around here
                    [es("defs", {id:"svg-defs"}, [tileDef, frameDef]),
                     theGrid,
+                    // The root frame, for decoration
+                    theFrameAxes,
                     // Due to bubbling, events not handled by any shape will be handled by the surface
                     DOMRoot, axesLayer, boxLayer, frameBoxLayer, controlLayer])]);
 
@@ -863,24 +879,17 @@ function sendToFront() {
                                while (treeDepth < v) {incDepth()}}}}),
 
                e("span", {}, [et(" | ")]),
-               // Toggling grid
+               // Toggling axes
                e("button", {onclick: (evt) => {
                  let v = getComputedStyle(axesLayer).visibility;
                  let V = (v == "visible") ? "hidden" : "visible";
-                 setAttr(axesLayer, {visibility: V})}},
+                 setAttr(axesLayer, {visibility: V});
+                 setAttr(theFrameAxes, {visibility: V});}},
                  [et("Axes")]),
                // Toggling braches visibility
                e("button", {onclick: (evt) => {
-                 if (treeDepth > 1) {
-                   for (let shape of shapeList.list()) {
-                     let layers = shape.viewLayers;
-                     let branchLayers = layers.slice(0, layers.length-1);
-                     for (let layer of branchLayers) {
-                       for (let {el} of layer) {
-                         setAttr(el, {visibility: (areBranchesVisible ?
-                                                   "hidden" : "visible")})}}}}
-
-                 areBranchesVisible = !areBranchesVisible;}},
+                 areBranchesVisible = !areBranchesVisible;
+                 applyBranchVisibility(areBranchesVisible);}},
                  [et("Branches")]),
 
                e("span", {}, [et(" | ")]),
