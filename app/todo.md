@@ -1,4 +1,7 @@
-- Try to see if I can download the kubernetes config file, and what it contains
+- Create a file server, to store user diagrams
+- Add glow tech
+- Change the grid size when window resizes
+- Design a logo for my app: for favicon, and Google login page
 - I need hotkeys
 - I need to see x, y and zoom
 - Add copy/paste
@@ -15,4 +18,3 @@
 - Axes somehow must have a consistent relation to shapes
 - Set up a simple help/shortcut menu
 - Default rectangle should be equilateral
-- Design a logo for my app

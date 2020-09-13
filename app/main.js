@@ -222,6 +222,7 @@ function Entity(type, data={}) {
   this.viewLayers = [];
 
   {// Calculating spawn location
+    let spawnOffset = 200;
     let [rx,ry] = [(Math.random())*20, (Math.random())*20];  // Randomize
     let d = panZoom.getPan();
     let zoom = panZoom.getZoom();
@@ -234,12 +235,12 @@ function Entity(type, data={}) {
       else {
         let scale = 1/3;  // Scaling is applied by default
         attrs.transform = [theD*scale,0, 0,theD*scale,
-                           (-d.x+100+rx)/zoom, (-d.y+100+ry)/zoom]}}
+                           (-d.x+spawnOffset+rx)/zoom, (-d.y+spawnOffset+ry)/zoom]}}
 
     else if (tag == "line") {
       if (!attrs.x1) {
-        let X = (-d.x+100+rx)/zoom;
-        let Y = (-d.y+100+ry)/zoom;
+        let X = (-d.x+spawnOffset+rx)/zoom;
+        let Y = (-d.y+spawnOffset+ry)/zoom;
         [attrs.x1, attrs.y1, attrs.x2, attrs.y2] = [X,Y, X+100, Y+100]}}
 
     else if (!attrs.transform) {
@@ -247,7 +248,7 @@ function Entity(type, data={}) {
       // Substituting (V - Δ/z + D/z) for V skews that result to zV+D (screen coord)
       let DEFAULT_DIM = 100;
       attrs.transform = [DEFAULT_DIM,0, 0,DEFAULT_DIM,
-                         (-d.x+100+rx)/zoom, (-d.y+100+ry)/zoom]}}
+                         (-d.x+spawnOffset+rx)/zoom, (-d.y+spawnOffset+ry)/zoom]}}
 
   // "moveFn" is only ever called when a move command has been issued (such as drag, or arrow keys) on the focused shape
   this.moveFn = null;
@@ -844,15 +845,27 @@ function sendToFront() {
 
   let UI = e("div", {id:"menu-bar"},
              [// Shape creation
-               e("button", {onClick: (evt) => {addEntity("shape", rectMold)}},
-                 [et("Rectangle")]),
-               e("button", {onClick: (evt) => {addEntity("shape", circMold)}},
-                 [et("Circle")]),
-               e("button", {onClick: (evt) => {addEntity("shape", trigMold)}},
-                 [et("Triangle")]),
-               e("button", {onClick: (evt) => {addEntity("shape", lineMold)}},
-                 [et("Line")]),
-               e("button", {onClick: (evt) => {addEntity("frame")}},
+               e("div", {class:"dropdown"},
+                 [e("button",
+                    {class:"dropbtn",
+                     onClick: () => {
+                       document.getElementById("shape-menu-content").classList.toggle("show");}},
+                    [et("Shapes")]),
+                  e("div", {id: "shape-menu-content",
+                            class: "dropdown-content"},
+                    [e("a", {href: "#",
+                             onClick: () => {addEntity("shape", rectMold)}},
+                       [et("Rectangle")]),
+                     e("a", {href: "#",
+                             onClick: () => {addEntity("shape", circMold)}},
+                       [et("Circle")]),
+                     e("a", {href: "#",
+                             onClick: () => {addEntity("shape", trigMold)}},
+                       [et("Triangle")]),
+                     e("a", {href: "#",
+                             onClick: () => {addEntity("shape", lineMold)}},
+                       [et("Line")])])]),
+               e("button", {onClick: () => {addEntity("frame")}},
                  [et("Frame")]),
 
                e("span", {}, [et(" | ")]),
@@ -902,6 +915,13 @@ function sendToFront() {
                  [et("Send forward")]),
                e("button", {onclick: sendToFront},
                  [et("Send to front")]),
+
+               e("div", {class: "g-signin2", "data-onsuccess": "onSignIn",
+                         "data-onfailure": "onFailure",
+                         // "data-width": 30,
+                         "data-height": 20,
+                         "data-longtitle": "false"}),
+               e("button", {onclick: signOut}, [et("Sign out")]),
              ]);
 
   app.appendChild(UI);
@@ -924,3 +944,11 @@ function sendToFront() {
                         },
                         minZoom: paramMinZoom,});
   panZoom.pan({x:20, y:20});}
+
+// Close the dropdown menu if the user clicks outside of it
+window.onclick = function(event) {
+  if (!event.target.matches(".dropbtn")) {
+    let dropdowns = document.getElementsByClassName("dropdown-content");
+    for (let openDropdown of dropdowns) {
+      if (openDropdown.classList.contains('show')) {
+        openDropdown.classList.remove('show');}}}}
