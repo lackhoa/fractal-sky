@@ -1,2 +1,5 @@
-app/node_modules/
-app/.env
+# Ignore npm's node_modules dependency folders
+frontend/node_modules/
+backend/node_modules/
+# The secret backend environment file (for dev use)
+backend/.env

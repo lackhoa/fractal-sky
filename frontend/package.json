@@ -1,0 +1,16 @@
+{
+  "name": "fractal-sky-frontend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "google-auth-library": "^6.0.6",
+    "svg-pan-zoom": "^3.6.1"
+  }
+}

@@ -693,6 +693,7 @@ function makeLayer(depth, recurDepth, frames) {
 
 function applyBranchVisibility(areBranchesVisible) {
   /** Forcefully apply visibility */
+  // #optimize: Why couldn't we iterate over frames' view layers?
   for (let shape of shapeList.list()) {
     let layers = shape.viewLayers;
     var i = 0;

@@ -1,4 +1,4 @@
-require('dotenv').config()
+require('dotenv').config();
 const { Client } = require("pg");
 
 const client = new Client({
@@ -13,4 +13,5 @@ client.query("SELECT * FROM users;",
                else {
                  for (let row of res.rows) {
                    console.log(JSON.stringify(row));}
-                 console.log("We got in!"); client.end();}});
+                 console.log("We got in!");
+                 client.end();}});
