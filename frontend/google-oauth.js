@@ -7,13 +7,13 @@ async function onSignIn(googleUser) {
   log("userID is: " + userId);
 
   {let id_token = googleUser.getAuthResponse().id_token;
-   // #Todo: Change to "fetch"
-   let xhr = new XMLHttpRequest();
    let config = await configPromise;
-   xhr.open("POST", config.BACKEND + "/token-signin");
-   xhr.setRequestHeader("Content-Type", "application/json");
-   xhr.onload = () => {console.log("Backend response: " + xhr.responseText);};
-   xhr.send(JSON.stringify({token: id_token}));}}
+   let res = await fetch(`${config.BACKEND}/token-signin`, {
+     method : "POST",
+     headers: {"Content-Type": "application/json"},
+     body   : JSON.stringify({token: id_token})});
+   let whatever = await res.json();
+   log(`Backend response: ${whatever}`)}}
 
 function signOut() {
   let auth2 = gapi.auth2.getAuthInstance();
