@@ -1,9 +1,4 @@
 "use strict";
-let log = console.log;
-let debug = console.log;
-let assert = console.assert;
-let entries = Object.entries;
-
 // Translation is applied to both the surface and the shapes
 // Shapes are under 2 translations: by the view and by user's edit
 var panZoom;  // A third-party svg pan-zoom thing

@@ -1,5 +1,7 @@
-# Ignore npm's node_modules dependency folders
+# Redundant npm's node_modules dependency folders
 frontend/node_modules/
 backend/node_modules/
-# The secret backend environment file (for dev use)
+# Secret environment files (for dev work)
+frontend/.env
+frontend/config.json
 backend/.env

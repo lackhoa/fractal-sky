@@ -9,5 +9,6 @@ RUN npm install
 # Copy all app files into the image
 COPY . .
 
+EXPOSE 80
 # The default command to run when starting the container
 CMD [ "npm", "start" ]

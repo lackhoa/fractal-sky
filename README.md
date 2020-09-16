@@ -14,8 +14,8 @@ So there are two main parts to this web app:
 # The folder structure
 /
 - Script and config files
--- frontend/
--- backend/
++ frontend/
++ backend/
 
 # Todo
 - Make sure we have both container builds running
@@ -39,3 +39,4 @@ So there are two main parts to this web app:
 - Axes somehow must have a consistent relation to shapes
 - Set up a simple help/shortcut menu
 - Default rectangle should be equilateral
+- Support these OAuth servers: Google, Facebook, GitHub
