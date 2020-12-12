@@ -19,7 +19,7 @@ html, body, #app {
 }
 
 /* Dropdown Button */
-.dropbtn {
+button {
     background-color: #3498DB;
     color: white;
     padding: 16px;

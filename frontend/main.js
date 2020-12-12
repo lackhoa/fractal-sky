@@ -912,12 +912,12 @@ function sendToFront() {
                e("button", {onclick: sendToFront},
                  [et("Send to front")]),
 
-               e("div", {class: "g-signin2", "data-onsuccess": "onSignIn",
-                         "data-onfailure": "onFailure",
-                         // "data-width": 30,
-                         "data-height": 20,
-                         "data-longtitle": "false"}),
-               e("button", {onclick: signOut}, [et("Sign out")]),
+               // e("div", {class: "g-signin2", "data-onsuccess": "onSignIn",
+               //           "data-onfailure": "onFailure",
+               //           // "data-width": 30,
+               //           "data-height": 20,
+               //           "data-longtitle": "false"}),
+               // e("button", {onclick: signOut}, [et("Sign out")]),
              ]);
 
   app.appendChild(UI);
